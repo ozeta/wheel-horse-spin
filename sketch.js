@@ -15,6 +15,7 @@ let gameState = 'setup'; // 'setup', 'racing', 'finished'
 
 // --- Racetrack Geometry ---
 let trackGeometry = {};
+const FINISH_LINE_WIDTH = 100; // px, wide enough for avatar and name
 
 // --- p5.js Sketch ---
 
@@ -219,13 +220,14 @@ function drawTrack() {
         }
     }
 
-    // --- Draw Finish Line ---
+    // --- Draw Finish Line as a rectangle ---
     const finishLineX = leftArcCenter.x;
     const finishLineYStart = leftArcCenter.y - arcRadius;
-    const finishLineYEnd = leftArcCenter.y + arcRadius;
-    stroke(255, 0, 0);
-    strokeWeight(4);
-    line(finishLineX, finishLineYStart, finishLineX, finishLineYEnd);
+    const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
+    noStroke();
+    fill(255, 0, 0);
+    rectMode(CORNERS);
+    rect(finishLineX, finishLineYStart, finishLineX + FINISH_LINE_WIDTH, finishLineYEnd);
 }
 
 function getHorsePosition(horse) {
