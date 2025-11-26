@@ -84,6 +84,53 @@ body, html {
     margin: 0;
 }
 
+/* Horse Item Styling */
+.horse-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 4px;
+    border-bottom: 1px solid #eee;
+    transition: background-color 0.2s;
+}
+
+.horse-item:hover {
+    background-color: #f9f9f9;
+}
+
+.horse-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-right: 12px;
+    border: 2px solid #ddd;
+}
+
+.horse-name {
+    flex-grow: 1;
+    font-size: 0.95em;
+}
+
+.delete-horse-btn {
+    background: none;
+    border: none;
+    color: #ff4d4d;
+    font-weight: bold;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    line-height: 20px;
+    text-align: center;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.delete-horse-btn:hover {
+    background-color: #ffeded;
+    color: #e60000;
+}
+
 .sidebar-buttons {
     display: flex;
     flex-direction: column;
