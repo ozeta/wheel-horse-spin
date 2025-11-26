@@ -73,6 +73,9 @@ function draw() {
 
     if (horseObjects.length > 0) {
         drawHorses();
+        if (gameState === 'racing') {
+            drawLeaderboard();
+        }
     }
 
     if (gameState === 'finished' && winner) {
@@ -156,8 +159,9 @@ function checkWinner() {
             winner = horse;
             gameState = 'finished';
             runRaceBtn.textContent = 'New Race';
-            runRaceBtn.style.display = 'block';
-            resetGameBtn.style.display = 'none'; // Hide reset when finished
+            // In finished state we keep only reset visible until user clicks it
+            runRaceBtn.style.display = 'none';
+            resetGameBtn.style.display = 'block';
             break;
         }
     }
@@ -315,6 +319,49 @@ function drawWinnerMessage() {
     text(`Winner is ${winner.name}!`, width / 2, height / 2);
 }
 
+// --- Leaderboard ---
+function drawLeaderboard() {
+    // Sort by percent completion descending
+    const ranked = [...horseObjects].map(h => {
+        const pct = constrain(h.progress / h.totalDistance, 0, 1);
+        return { name: h.name, pct };
+    }).sort((a, b) => b.pct - a.pct);
+
+    const padding = 8;
+    const lineHeight = 18;
+    const headerHeight = 20;
+    const boxWidth = 180;
+    const boxHeight = headerHeight + ranked.length * lineHeight + padding * 2;
+    const cx = width / 2;
+    const cy = height / 2;
+    const x = cx - boxWidth / 2;
+    const y = cy - boxHeight / 2;
+
+    // Background box
+    noStroke();
+    fill(255, 255, 255, 180);
+    rectMode(CORNER);
+    rect(x, y, boxWidth, boxHeight, 10);
+
+    // Header
+    fill(30);
+    textAlign(LEFT, CENTER);
+    textSize(14);
+    textStyle(BOLD);
+    text('Leaderboard', x + padding, y + padding + headerHeight / 2);
+
+    // Entries
+    textSize(12);
+    textStyle(NORMAL);
+    ranked.forEach((r, i) => {
+        const rowY = y + padding + headerHeight + i * lineHeight + lineHeight / 2;
+        const rankStr = (i + 1).toString().padStart(2, ' ');
+        const pctStr = Math.round(r.pct * 100);
+        fill(0);
+        text(`${rankStr}. ${r.name} (${pctStr}%)`, x + padding, rowY);
+    });
+}
+
 // --- Data Persistence & Horse Management ---
 
 function saveHorses() {
@@ -413,14 +460,16 @@ function renderHorseList() {
     });
 
     // Update button based on state
-    if (gameState === 'setup' || gameState === 'finished') {
+    if (gameState === 'setup') {
         runRaceBtn.textContent = 'Run Race';
         runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
         resetGameBtn.style.display = 'none';
-    } else {
+    } else if (gameState === 'racing') {
         runRaceBtn.style.display = 'none';
-        if (gameState === 'racing') {
-            resetGameBtn.style.display = 'block';
-        }
+        resetGameBtn.style.display = 'block';
+    } else if (gameState === 'finished') {
+        // After finish: keep reset visible, hide run button until user resets
+        runRaceBtn.style.display = 'none';
+        resetGameBtn.style.display = 'block';
     }
 }
