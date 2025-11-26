@@ -1,8 +1,13 @@
 let horses = [];
 let horseObjects = [];
 let horseImages = {}; // Cache for loaded avatar images
-let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn;
+let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn, pauseGameBtn;
 let winner = null;
+// --- Timing ---
+let raceStartMillis = 0;
+let raceElapsedSeconds = 0; // captured when race finishes
+let pauseStartMillis = 0; // when pause initiated
+let pausedAccumulatedMillis = 0; // total paused duration
 
 // --- Game State & Configuration ---
 const MAX_EXECUTION_TIME = 10; // Target race duration in seconds
@@ -11,7 +16,7 @@ const avatarStyles = [
     'fun-emoji', 'lorelei', 'micah', 'miniavs', 'open-peeps', 'personas', 'pixel-art',
 ];
 let currentStyle;
-let gameState = 'setup'; // 'setup', 'racing', 'finished'
+let gameState = 'setup'; // 'setup', 'racing', 'paused', 'finished'
 
 // --- Racetrack Geometry ---
 let trackGeometry = {};
@@ -50,6 +55,7 @@ function setup() {
     runRaceBtn = document.getElementById('run-race');
     resetGameBtn = document.getElementById('reset-game');
     shareUrlBtn = document.getElementById('share-url');
+    pauseGameBtn = document.getElementById('pause-game');
 
     // --- Event Listeners ---
     addHorseBtn.addEventListener('click', addHorse);
@@ -57,6 +63,7 @@ function setup() {
     runRaceBtn.addEventListener('click', handleRaceButton);
     resetGameBtn.addEventListener('click', resetGame);
     shareUrlBtn.addEventListener('click', copyShareableURL);
+    pauseGameBtn.addEventListener('click', togglePause);
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -75,13 +82,14 @@ function draw() {
 
     if (horseObjects.length > 0) {
         drawHorses();
-        if (gameState === 'racing') {
+        if (gameState === 'racing' || gameState === 'paused') {
             drawLeaderboard();
         }
     }
 
     if (gameState === 'finished' && winner) {
         drawWinnerMessage();
+        drawFinalLeaderboard();
     }
 }
 
@@ -106,8 +114,14 @@ function handleRaceButton() {
 function startRace() {
     gameState = 'racing';
     winner = null;
+    raceStartMillis = millis();
+    raceElapsedSeconds = 0;
+    pausedAccumulatedMillis = 0;
+    pauseStartMillis = 0;
     runRaceBtn.style.display = 'none'; // Hide button during the race
     resetGameBtn.style.display = 'block'; // Show reset button during race
+    pauseGameBtn.style.display = 'block';
+    pauseGameBtn.textContent = 'Pause';
 
     // Reset progress and set initial speed for all horses
     horseObjects.forEach(h => {
@@ -160,10 +174,13 @@ function checkWinner() {
         if (horse.progress >= horse.totalDistance) {
             winner = horse;
             gameState = 'finished';
+            const rawElapsed = millis() - raceStartMillis - pausedAccumulatedMillis;
+            raceElapsedSeconds = rawElapsed / 1000.0;
             runRaceBtn.textContent = 'New Race';
             // In finished state we keep only reset visible until user clicks it
             runRaceBtn.style.display = 'none';
             resetGameBtn.style.display = 'block';
+            pauseGameBtn.style.display = 'none';
             break;
         }
     }
@@ -184,6 +201,8 @@ function resetGame() {
     runRaceBtn.textContent = 'Run Race';
     runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
     resetGameBtn.style.display = 'none';
+    pauseGameBtn.style.display = 'none';
+    pauseGameBtn.textContent = 'Pause';
 }
 
 // --- Drawing Functions ---
@@ -318,7 +337,10 @@ function drawWinnerMessage() {
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(50);
-    text(`Winner is ${winner.name}!`, width / 2, height / 2);
+    text(`Winner: ${winner.name}!`, width / 2, height / 2 - 30);
+    textSize(24);
+    const t = raceElapsedSeconds.toFixed(2);
+    text(`Time: ${t}s`, width / 2, height / 2 + 20);
 }
 
 // --- Leaderboard ---
@@ -326,41 +348,142 @@ function drawLeaderboard() {
     // Sort by percent completion descending
     const ranked = [...horseObjects].map(h => {
         const pct = constrain(h.progress / h.totalDistance, 0, 1);
-        return { name: h.name, pct };
+        return { horse: h, name: h.name, pct };
     }).sort((a, b) => b.pct - a.pct);
 
-    const padding = 8;
-    const lineHeight = 18;
-    const headerHeight = 20;
-    const boxWidth = 180;
-    const boxHeight = headerHeight + ranked.length * lineHeight + padding * 2;
-    const cx = width / 2;
-    const cy = height / 2;
-    const x = cx - boxWidth / 2;
-    const y = cy - boxHeight / 2;
+    // Dimensions (similar style to final leaderboard, scaled down)
+    const padding = 14;
+    const headerHeight = 40;
+    const rowHeight = 30;
+    const boxWidth = min(420, width * 0.6);
+    const boxHeight = headerHeight + ranked.length * rowHeight + padding * 2;
+    const x = (width - boxWidth) / 2;
+    const y = (height - boxHeight) / 2; // center overlay
 
-    // Background box
-    noStroke();
-    fill(255, 255, 255, 180);
+    // Background panel
     rectMode(CORNER);
-    rect(x, y, boxWidth, boxHeight, 10);
+    noStroke();
+    fill(255, 255, 255, 210);
+    rect(x, y, boxWidth, boxHeight, 12);
 
     // Header
     fill(30);
     textAlign(LEFT, CENTER);
-    textSize(14);
+    textSize(18);
     textStyle(BOLD);
-    text('Leaderboard', x + padding, y + padding + headerHeight / 2);
+    text('Live Leaderboard', x + padding, y + padding + headerHeight / 2);
 
-    // Entries
-    textSize(12);
-    textStyle(NORMAL);
+    // Progress bars
+    const barMaxWidth = boxWidth - padding * 2 - 90; // space for rank+name & pct
     ranked.forEach((r, i) => {
-        const rowY = y + padding + headerHeight + i * lineHeight + lineHeight / 2;
-        const rankStr = (i + 1).toString().padStart(2, ' ');
-        const pctStr = Math.round(r.pct * 100);
-        fill(0);
-        text(`${rankStr}. ${r.name} (${pctStr}%)`, x + padding, rowY);
+        const yTop = y + padding + headerHeight + i * rowHeight;
+        const centerY = yTop + rowHeight / 2;
+        const pctDisplay = Math.round(r.pct * 100);
+
+        // Color logic: 1st gold, 2nd silver, 3rd copper, others white
+        let barColor;
+        if (i === 0) {
+            barColor = color(255, 215, 0); // Gold
+        } else if (i === 1) {
+            barColor = color(192); // Silver (192,192,192)
+        } else if (i === 2) {
+            barColor = color(184, 115, 51); // Copper
+        } else {
+            barColor = color(255); // White
+        }
+
+        // Draw bar background
+        fill(230);
+        const textX = x + padding;
+        const barX = textX + 90;
+        rect(barX, centerY - 9, barMaxWidth, 18, 6);
+        // Filled portion
+        fill(barColor);
+        rect(barX, centerY - 9, barMaxWidth * r.pct, 18, 6);
+
+        // Text
+        textAlign(LEFT, CENTER);
+        textSize(16);
+        textStyle(NORMAL);
+        fill(30);
+        const rankStr = (i + 1).toString().padStart(2, '0');
+        text(`${rankStr}. ${r.name}`, textX, centerY - 3);
+        textAlign(RIGHT, CENTER);
+        text(`${pctDisplay}%`, x + boxWidth - padding, centerY - 3);
+    });
+}
+
+// --- Final Leaderboard (Post-Race) ---
+function drawFinalLeaderboard() {
+    // Rank by final completion (winner first, then descending percent)
+    const ranked = [...horseObjects].map(h => {
+        const pctRaw = h === winner ? 1 : constrain(h.progress / h.totalDistance, 0, 1);
+        return { horse: h, name: h.name, pct: pctRaw };
+    }).sort((a, b) => b.pct - a.pct);
+
+    // Ensure winner is first even if rounding ties
+    ranked.sort((a, b) => (a.horse === winner ? -1 : b.horse === winner ? 1 : b.pct - a.pct));
+
+    const padding = 16;
+    const headerHeight = 44;
+    const rowHeight = 34;
+    const boxWidth = min(520, width * 0.8);
+    const boxHeight = headerHeight + ranked.length * rowHeight + padding * 2;
+    const boxX = (width - boxWidth) / 2;
+    const boxY = (height / 2) + 70; // Below winner text
+
+    // Background panel
+    rectMode(CORNER);
+    noStroke();
+    fill(255, 255, 255, 215);
+    rect(boxX, boxY, boxWidth, boxHeight, 14);
+
+    // Header
+    fill(30);
+    textAlign(LEFT, CENTER);
+    textSize(20);
+    textStyle(BOLD);
+    const timeStr = raceElapsedSeconds.toFixed(2);
+    text(`Final Leaderboard  |  Time: ${timeStr}s`, boxX + padding, boxY + padding + headerHeight / 2);
+
+    // Rows
+    const barMaxWidth = boxWidth - padding * 2 - 100; // space for rank+name+percent text
+    ranked.forEach((r, i) => {
+        const yTop = boxY + padding + headerHeight + i * rowHeight;
+        const centerY = yTop + rowHeight / 2;
+        const pct = r.pct;
+        const pctDisplay = Math.round(pct * 100);
+        // Determine colors
+        let rowColor;
+        if (i === 0) {
+            rowColor = color(255, 215, 0); // Gold (winner)
+        } else if (i === 1) {
+            rowColor = color(192); // Silver
+        } else if (i === 2) {
+            rowColor = color(184, 115, 51); // Copper
+        } else {
+            rowColor = color(255); // White
+        }
+
+        // Text
+        textAlign(LEFT, CENTER);
+        textSize(16);
+        textStyle(NORMAL);
+        fill(30);
+        const rankStr = (i + 1).toString().padStart(2, '0');
+        const textX = boxX + padding;
+        const barX = textX + 100; // start of bar
+        // Draw progress bar background
+        fill(230);
+        rect(barX, centerY - 10, barMaxWidth, 20, 6);
+        // Filled portion
+        fill(rowColor);
+        rect(barX, centerY - 10, barMaxWidth * pct, 20, 6);
+        // Draw text after bars to ensure visibility
+        fill(30);
+        text(`${rankStr}. ${r.name}`, textX, centerY - 4);
+        textAlign(RIGHT, CENTER);
+        text(`${pctDisplay}%`, boxX + boxWidth - padding, centerY - 4);
     });
 }
 
@@ -480,13 +603,22 @@ function renderHorseList() {
         runRaceBtn.textContent = 'Run Race';
         runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
         resetGameBtn.style.display = 'none';
+        pauseGameBtn.style.display = 'none';
     } else if (gameState === 'racing') {
         runRaceBtn.style.display = 'none';
         resetGameBtn.style.display = 'block';
+        pauseGameBtn.style.display = 'block';
+        pauseGameBtn.textContent = 'Pause';
+    } else if (gameState === 'paused') {
+        runRaceBtn.style.display = 'none';
+        resetGameBtn.style.display = 'block';
+        pauseGameBtn.style.display = 'block';
+        pauseGameBtn.textContent = 'Resume';
     } else if (gameState === 'finished') {
         // After finish: keep reset visible, hide run button until user resets
         runRaceBtn.style.display = 'none';
         resetGameBtn.style.display = 'block';
+        pauseGameBtn.style.display = 'none';
     }
 }
 
@@ -518,4 +650,18 @@ function copyShareableURL() {
     }).catch(() => {
         alert('Failed to copy URL.');
     });
+}
+
+// --- Pause Handling ---
+function togglePause() {
+    if (gameState === 'racing') {
+        gameState = 'paused';
+        pauseStartMillis = millis();
+        pauseGameBtn.textContent = 'Resume';
+    } else if (gameState === 'paused') {
+        gameState = 'racing';
+        pausedAccumulatedMillis += millis() - pauseStartMillis;
+        pauseStartMillis = 0;
+        pauseGameBtn.textContent = 'Pause';
+    }
 }

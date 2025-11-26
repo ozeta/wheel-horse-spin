@@ -154,6 +154,14 @@ body, html {
     background-color: #0056b3;
 }
 
+#pause-game {
+    background-color: #6c757d; /* Gray pause button */
+}
+
+#pause-game:hover {
+    background-color: #545b62;
+}
+
 #clear-data {
     background-color: #dc3545;
 }
