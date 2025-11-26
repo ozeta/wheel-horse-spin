@@ -8,6 +8,7 @@ let raceStartMillis = 0;
 let raceElapsedSeconds = 0; // captured when race finishes
 let pauseStartMillis = 0; // when pause initiated
 let pausedAccumulatedMillis = 0; // total paused duration
+let overallRaceDurationSeconds = 0; // time when last horse finishes
 
 // --- Game State & Configuration ---
 const MAX_EXECUTION_TIME = 10; // Target race duration in seconds
@@ -77,7 +78,7 @@ function draw() {
 
     if (gameState === 'racing') {
         updateHorses();
-        checkWinner();
+        checkRaceCompletion();
     }
 
     if (horseObjects.length > 0) {
@@ -148,7 +149,9 @@ function initializeHorseObjects() {
             progress: 0, // Distance covered
             speed: 0,
             totalDistance: totalDistance,
-            img: horseImages[horse.name]
+            img: horseImages[horse.name],
+            finished: false,
+            finishSeconds: null
         };
     });
 }
@@ -157,33 +160,50 @@ function updateHorses() {
     const targetFrames = MAX_EXECUTION_TIME * 60;
     horseObjects.forEach(horse => {
         const baseSpeed = horse.totalDistance / targetFrames;
-        // Fluctuate speed slightly around the base speed
-        horse.speed += random(-baseSpeed * 0.05, baseSpeed * 0.05);
-        // Constrain the speed to prevent it from becoming too fast or slow
-        horse.speed = constrain(horse.speed, baseSpeed * 0.8, baseSpeed * 1.2);
-
-        // Update progress based on speed
-        horse.progress += horse.speed;
+        if (!horse.finished) {
+            // Fluctuate speed slightly around the base speed
+            horse.speed += random(-baseSpeed * 0.05, baseSpeed * 0.05);
+            horse.speed = constrain(horse.speed, baseSpeed * 0.8, baseSpeed * 1.2);
+            horse.progress += horse.speed;
+            if (horse.progress >= horse.totalDistance) {
+                horse.progress = horse.totalDistance; // clamp
+                horse.finished = true;
+                const rawFinishMillis = millis() - raceStartMillis - pausedAccumulatedMillis;
+                horse.finishSeconds = rawFinishMillis / 1000.0;
+            }
+        } else {
+            // Decelerate to full stop
+            if (horse.speed > 0.05) {
+                horse.speed *= 0.85;
+            } else {
+                horse.speed = 0;
+            }
+            horse.progress = horse.totalDistance; // keep at finish
+        }
     });
 }
 
-function checkWinner() {
-    if (winner) return; // Stop checking once a winner is found
+function checkRaceCompletion() {
+    if (gameState !== 'racing') return;
+    // If any horse not finished, keep racing
+    const allFinished = horseObjects.every(h => h.finished);
+    if (!allFinished) return;
 
-    for (const horse of horseObjects) {
-        if (horse.progress >= horse.totalDistance) {
-            winner = horse;
-            gameState = 'finished';
-            const rawElapsed = millis() - raceStartMillis - pausedAccumulatedMillis;
-            raceElapsedSeconds = rawElapsed / 1000.0;
-            runRaceBtn.textContent = 'New Race';
-            // In finished state we keep only reset visible until user clicks it
-            runRaceBtn.style.display = 'none';
-            resetGameBtn.style.display = 'block';
-            pauseGameBtn.style.display = 'none';
-            break;
-        }
-    }
+    // Determine winner by earliest finishSeconds
+    const minTime = Math.min(...horseObjects.map(h => h.finishSeconds));
+    const firstFinishers = horseObjects.filter(h => h.finishSeconds === minTime);
+    winner = firstFinishers[0]; // choose first for display
+    const lastTime = Math.max(...horseObjects.map(h => h.finishSeconds));
+    raceElapsedSeconds = minTime; // winner's time
+    overallRaceDurationSeconds = lastTime; // total race duration
+
+    gameState = 'finished';
+    runRaceBtn.textContent = 'New Race';
+    runRaceBtn.style.display = 'none';
+    resetGameBtn.style.display = 'block';
+    pauseGameBtn.style.display = 'none';
+    // Store tie info for overlay
+    winner._tie = firstFinishers.length > 1;
 }
 
 // --- Reset Game ---
@@ -330,76 +350,63 @@ function drawHorses() {
 }
 
 function drawWinnerMessage() {
-    fill(0, 0, 0, 150); // Semi-transparent black overlay
+    fill(0, 0, 0, 150); // Semi-transparent backdrop
     rectMode(CORNER);
     rect(0, 0, width, height);
 
     fill(255);
     textAlign(CENTER, CENTER);
+    const winnerTimeStr = raceElapsedSeconds.toFixed(2);
+    const totalTimeStr = overallRaceDurationSeconds.toFixed(2);
+    const tieLabel = winner && winner._tie ? ' (tie)' : '';
     textSize(50);
-    text(`Winner: ${winner.name}!`, width / 2, height / 2 - 30);
+    text(`Winner${tieLabel}: ${winner.name}`, width / 2, height / 2 - 50);
     textSize(24);
-    const t = raceElapsedSeconds.toFixed(2);
-    text(`Time: ${t}s`, width / 2, height / 2 + 20);
+    text(`Winner Time: ${winnerTimeStr}s`, width / 2, height / 2);
+    text(`Total Duration: ${totalTimeStr}s`, width / 2, height / 2 + 40);
 }
 
 // --- Leaderboard ---
 function drawLeaderboard() {
-    // Sort by percent completion descending
-    const ranked = [...horseObjects].map(h => {
-        const pct = constrain(h.progress / h.totalDistance, 0, 1);
-        return { horse: h, name: h.name, pct };
-    }).sort((a, b) => b.pct - a.pct);
+    // Build ranking: finished first by finishSeconds ascending, then unfinished by progress descending
+    const ranked = [...horseObjects].sort((a, b) => {
+        if (a.finished && b.finished) return a.finishSeconds - b.finishSeconds;
+        if (a.finished && !b.finished) return -1;
+        if (!a.finished && b.finished) return 1;
+        const aPct = a.progress / a.totalDistance;
+        const bPct = b.progress / b.totalDistance;
+        return bPct - aPct; // both unfinished: higher progress first
+    });
 
-    // Dimensions (similar style to final leaderboard, scaled down)
     const padding = 14;
     const headerHeight = 40;
     const rowHeight = 30;
     const boxWidth = min(420, width * 0.6);
     const boxHeight = headerHeight + ranked.length * rowHeight + padding * 2;
     const x = (width - boxWidth) / 2;
-    const y = (height - boxHeight) / 2; // center overlay
+    const y = (height - boxHeight) / 2;
 
-    // Background panel
     rectMode(CORNER);
     noStroke();
     fill(255, 255, 255, 210);
     rect(x, y, boxWidth, boxHeight, 12);
 
-    // Header
     fill(30);
     textAlign(LEFT, CENTER);
     textSize(18);
     textStyle(BOLD);
     text('Live Leaderboard', x + padding, y + padding + headerHeight / 2);
 
-    // Progress bars
-    const barMaxWidth = boxWidth - padding * 2 - 90; // space for rank+name & pct
-    ranked.forEach((r, i) => {
+    ranked.forEach((h, i) => {
         const yTop = y + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
-        const pctDisplay = Math.round(r.pct * 100);
 
-        // Color logic: 1st gold, 2nd silver, 3rd copper, others white
-        let barColor;
-        if (i === 0) {
-            barColor = color(255, 215, 0); // Gold
-        } else if (i === 1) {
-            barColor = color(192); // Silver (192,192,192)
-        } else if (i === 2) {
-            barColor = color(184, 115, 51); // Copper
-        } else {
-            barColor = color(255); // White
-        }
-
-        // Draw bar background
-        fill(230);
-        const textX = x + padding;
-        const barX = textX + 90;
-        rect(barX, centerY - 9, barMaxWidth, 18, 6);
-        // Filled portion
-        fill(barColor);
-        rect(barX, centerY - 9, barMaxWidth * r.pct, 18, 6);
+        // Color logic top 3 of current ranking
+        let rowColor;
+        if (i === 0) rowColor = color(255, 215, 0); // Gold
+        else if (i === 1) rowColor = color(192); // Silver
+        else if (i === 2) rowColor = color(184, 115, 51); // Copper
+        else rowColor = color(255); // White
 
         // Text
         textAlign(LEFT, CENTER);
@@ -407,83 +414,82 @@ function drawLeaderboard() {
         textStyle(NORMAL);
         fill(30);
         const rankStr = (i + 1).toString().padStart(2, '0');
-        text(`${rankStr}. ${r.name}`, textX, centerY - 3);
+        let rightInfo;
+        if (h.finished) {
+            rightInfo = `${h.finishSeconds.toFixed(2)}s`;
+        } else {
+            const pctDisplay = Math.round((h.progress / h.totalDistance) * 100);
+            rightInfo = `${pctDisplay}%`;
+        }
+        // Background row accent (optional subtle)
+        fill(230);
+        rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
+        fill(30);
+        text(`${rankStr}. ${h.name}`, x + padding + 8, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(`${pctDisplay}%`, x + boxWidth - padding, centerY - 3);
+        text(rightInfo, x + boxWidth - padding - 8, centerY - 2);
+        // Draw a small colored bullet for top3
+        if (i < 3) {
+            fill(rowColor);
+            ellipse(x + padding + 4, centerY - 2, 10, 10);
+        }
     });
 }
 
 // --- Final Leaderboard (Post-Race) ---
 function drawFinalLeaderboard() {
-    // Rank by final completion (winner first, then descending percent)
-    const ranked = [...horseObjects].map(h => {
-        const pctRaw = h === winner ? 1 : constrain(h.progress / h.totalDistance, 0, 1);
-        return { horse: h, name: h.name, pct: pctRaw };
-    }).sort((a, b) => b.pct - a.pct);
-
-    // Ensure winner is first even if rounding ties
-    ranked.sort((a, b) => (a.horse === winner ? -1 : b.horse === winner ? 1 : b.pct - a.pct));
-
+    // All horses finished: sort by finishSeconds ascending
+    const ranked = [...horseObjects].sort((a, b) => a.finishSeconds - b.finishSeconds);
+    const winnerTime = raceElapsedSeconds; // earliest
     const padding = 16;
     const headerHeight = 44;
     const rowHeight = 34;
-    const boxWidth = min(520, width * 0.8);
+    const boxWidth = min(560, width * 0.85);
     const boxHeight = headerHeight + ranked.length * rowHeight + padding * 2;
     const boxX = (width - boxWidth) / 2;
-    const boxY = (height / 2) + 70; // Below winner text
+    const boxY = (height / 2) + 90; // below overlay winner text
 
-    // Background panel
     rectMode(CORNER);
     noStroke();
     fill(255, 255, 255, 215);
     rect(boxX, boxY, boxWidth, boxHeight, 14);
 
-    // Header
     fill(30);
     textAlign(LEFT, CENTER);
     textSize(20);
     textStyle(BOLD);
-    const timeStr = raceElapsedSeconds.toFixed(2);
-    text(`Final Leaderboard  |  Time: ${timeStr}s`, boxX + padding, boxY + padding + headerHeight / 2);
+    text(`Final Leaderboard  |  Winner: ${winnerTime.toFixed(2)}s`, boxX + padding, boxY + padding + headerHeight / 2);
 
-    // Rows
-    const barMaxWidth = boxWidth - padding * 2 - 100; // space for rank+name+percent text
-    ranked.forEach((r, i) => {
+    ranked.forEach((h, i) => {
         const yTop = boxY + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
-        const pct = r.pct;
-        const pctDisplay = Math.round(pct * 100);
-        // Determine colors
-        let rowColor;
-        if (i === 0) {
-            rowColor = color(255, 215, 0); // Gold (winner)
-        } else if (i === 1) {
-            rowColor = color(192); // Silver
-        } else if (i === 2) {
-            rowColor = color(184, 115, 51); // Copper
-        } else {
-            rowColor = color(255); // White
-        }
+        let colorFill;
+        if (i === 0) colorFill = color(255, 215, 0); // Gold
+        else if (i === 1) colorFill = color(192); // Silver
+        else if (i === 2) colorFill = color(184, 115, 51); // Copper
+        else colorFill = color(255);
 
-        // Text
+        const rankStr = (i + 1).toString().padStart(2, '0');
+        const timeStr = h.finishSeconds.toFixed(2) + 's' + (winner._tie && h.finishSeconds === winnerTime ? ' (tie)' : '');
+        const delta = h.finishSeconds - winnerTime;
+        const deltaStr = (delta === 0 ? '+0.00s' : `+${delta.toFixed(2)}s`);
+
+        // Row background
+        fill(230);
+        rect(boxX + padding, centerY - 14, boxWidth - padding * 2, 28, 8);
+        // Colored bullet for top3
+        if (i < 3) {
+            fill(colorFill);
+            ellipse(boxX + padding + 12, centerY - 0, 14, 14);
+        }
+        fill(30);
         textAlign(LEFT, CENTER);
         textSize(16);
-        textStyle(NORMAL);
-        fill(30);
-        const rankStr = (i + 1).toString().padStart(2, '0');
-        const textX = boxX + padding;
-        const barX = textX + 100; // start of bar
-        // Draw progress bar background
-        fill(230);
-        rect(barX, centerY - 10, barMaxWidth, 20, 6);
-        // Filled portion
-        fill(rowColor);
-        rect(barX, centerY - 10, barMaxWidth * pct, 20, 6);
-        // Draw text after bars to ensure visibility
-        fill(30);
-        text(`${rankStr}. ${r.name}`, textX, centerY - 4);
+        text(`${rankStr}. ${h.name}`, boxX + padding + 30, centerY - 2);
+        textAlign(CENTER, CENTER);
+        text(timeStr, boxX + boxWidth / 2, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(`${pctDisplay}%`, boxX + boxWidth - padding, centerY - 4);
+        text(deltaStr, boxX + boxWidth - padding - 12, centerY - 2);
     });
 }
 
