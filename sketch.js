@@ -1,7 +1,7 @@
 let horses = [];
 let horseObjects = [];
 let horseImages = {}; // Cache for loaded avatar images
-let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn;
+let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn;
 let winner = null;
 
 // --- Game State & Configuration ---
@@ -49,12 +49,14 @@ function setup() {
     clearDataBtn = document.getElementById('clear-data');
     runRaceBtn = document.getElementById('run-race');
     resetGameBtn = document.getElementById('reset-game');
+    shareUrlBtn = document.getElementById('share-url');
 
     // --- Event Listeners ---
     addHorseBtn.addEventListener('click', addHorse);
     clearDataBtn.addEventListener('click', clearAllData);
     runRaceBtn.addEventListener('click', handleRaceButton);
     resetGameBtn.addEventListener('click', resetGame);
+    shareUrlBtn.addEventListener('click', copyShareableURL);
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -369,9 +371,23 @@ function saveHorses() {
 }
 
 function loadHorses() {
-    const storedHorses = localStorage.getItem('horses');
-    if (storedHorses) {
-        horses = JSON.parse(storedHorses);
+    // First attempt to read from URL (?horses=name1,name2,...)
+    const urlNames = parseHorseNamesFromURL();
+    if (urlNames.length > 0) {
+        horses = [];
+        urlNames.slice(0, 10).forEach(name => {
+            const avatarUrl = `https://api.dicebear.com/8.x/${currentStyle}/svg?seed=${encodeURIComponent(name)}`;
+            horses.push({ name, avatar: avatarUrl });
+            // Preload image into cache
+            horseImages[name] = loadImage(avatarUrl);
+        });
+        // Persist so refresh keeps same horses
+        saveHorses();
+    } else {
+        const storedHorses = localStorage.getItem('horses');
+        if (storedHorses) {
+            horses = JSON.parse(storedHorses);
+        }
     }
     renderHorseList();
     calculateTrackGeometry(); // Ensure geometry is ready
@@ -472,4 +488,34 @@ function renderHorseList() {
         runRaceBtn.style.display = 'none';
         resetGameBtn.style.display = 'block';
     }
+}
+
+// ---------------- URL Encoding Support ----------------
+// Format: ?horses=Name1,Name2,Name3
+// Example: https://example.com/wheel.html?horses=Seabiscuit,Secretariat,Man%20o%20War
+// Up to 10 horses accepted. If provided, overrides localStorage horses.
+function parseHorseNamesFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('horses');
+    if (!raw) return [];
+    return raw.split(',')
+        .map(s => decodeURIComponent(s.trim()))
+        .filter(s => s.length > 0)
+        .slice(0, 10); // enforce max
+}
+
+function buildShareableURL() {
+    const base = window.location.origin + window.location.pathname;
+    if (horses.length === 0) return base;
+    const encoded = horses.map(h => encodeURIComponent(h.name)).join(',');
+    return `${base}?horses=${encoded}`;
+}
+
+function copyShareableURL() {
+    const url = buildShareableURL();
+    navigator.clipboard.writeText(url).then(() => {
+        alert('Shareable URL copied to clipboard!');
+    }).catch(() => {
+        alert('Failed to copy URL.');
+    });
 }
