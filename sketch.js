@@ -185,41 +185,37 @@ function calculateTrackGeometry() {
 function drawTrack() {
     const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
 
-    // --- Draw the track surface ---
-    const trackColor = color(210, 180, 140); // A single, light-brown color
-    noStroke();
-    fill(trackColor);
+    const evenLaneColor = color(210, 180, 140); // Lighter brown
+    const oddLaneColor = color(200, 170, 130);  // Slightly darker brown
 
-    const outerRadius = arcRadius;
-    const innerRadius = arcRadius - (numLanes * laneWidth);
+    // Draw each lane individually with its correct color
+    noFill();
+    strokeWeight(laneWidth);
+    for (let i = 0; i < numLanes; i++) {
+        const laneRadius = arcRadius - (i * laneWidth) - (laneWidth / 2);
+        const laneColor = i % 2 === 0 ? evenLaneColor : oddLaneColor;
 
-    // Draw the main shape of the track
-    rectMode(CORNERS);
-    rect(leftArcCenter.x, leftArcCenter.y - outerRadius, rightArcCenter.x, rightArcCenter.y + outerRadius);
-    arc(leftArcCenter.x, leftArcCenter.y, outerRadius * 2, outerRadius * 2, HALF_PI, -HALF_PI);
-    arc(rightArcCenter.x, rightArcCenter.y, outerRadius * 2, outerRadius * 2, -HALF_PI, HALF_PI);
+        if (laneRadius > 0) {
+            stroke(laneColor);
+            // Draw the path for the current lane
+            arc(leftArcCenter.x, leftArcCenter.y, laneRadius * 2, laneRadius * 2, HALF_PI, PI + HALF_PI);
+            arc(rightArcCenter.x, rightArcCenter.y, laneRadius * 2, laneRadius * 2, PI + HALF_PI, HALF_PI);
+            line(leftArcCenter.x, leftArcCenter.y - laneRadius, rightArcCenter.x, rightArcCenter.y - laneRadius);
+            line(rightArcCenter.x, rightArcCenter.y + laneRadius, leftArcCenter.x, leftArcCenter.y + laneRadius);
+        }
+    }
 
-    // Cut out the center of the track
-    fill(0, 100, 0); // Match the background color for the infield
-    rectMode(CORNERS);
-    rect(leftArcCenter.x, leftArcCenter.y - innerRadius, rightArcCenter.x, rightArcCenter.y + innerRadius);
-    arc(leftArcCenter.x, leftArcCenter.y, innerRadius * 2, innerRadius * 2, HALF_PI, -HALF_PI);
-    arc(rightArcCenter.x, rightArcCenter.y, innerRadius * 2, innerRadius * 2, -HALF_PI, HALF_PI);
-
-
-    // Draw lane divider lines from the outside in
+    // Draw thin white divider lines on top of the lanes
     stroke(255, 150); // White, semi-transparent lines
     strokeWeight(2);
     noFill();
      for (let i = 1; i < numLanes; i++) {
-        const currentRadius = arcRadius - i * laneWidth;
-        if (currentRadius > 0) {
-            // Arcs
-            arc(leftArcCenter.x, leftArcCenter.y, currentRadius * 2, currentRadius * 2, HALF_PI, PI + HALF_PI);
-            arc(rightArcCenter.x, rightArcCenter.y, currentRadius * 2, currentRadius * 2, PI + HALF_PI, HALF_PI);
-            // Straight lines
-            line(leftArcCenter.x, leftArcCenter.y - currentRadius, rightArcCenter.x, rightArcCenter.y - currentRadius);
-            line(rightArcCenter.x, rightArcCenter.y + currentRadius, leftArcCenter.x, leftArcCenter.y + currentRadius);
+        const dividerRadius = arcRadius - i * laneWidth;
+        if (dividerRadius > 0) {
+            arc(leftArcCenter.x, leftArcCenter.y, dividerRadius * 2, dividerRadius * 2, HALF_PI, PI + HALF_PI);
+            arc(rightArcCenter.x, rightArcCenter.y, dividerRadius * 2, dividerRadius * 2, PI + HALF_PI, HALF_PI);
+            line(leftArcCenter.x, leftArcCenter.y - dividerRadius, rightArcCenter.x, rightArcCenter.y - dividerRadius);
+            line(rightArcCenter.x, rightArcCenter.y + dividerRadius, leftArcCenter.x, leftArcCenter.y + dividerRadius);
         }
     }
 
