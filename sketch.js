@@ -22,6 +22,9 @@ let gameState = 'setup'; // 'setup', 'racing', 'paused', 'finished'
 // --- Racetrack Geometry ---
 let trackGeometry = {};
 const FINISH_LINE_WIDTH = 100; // px, wide enough for avatar and name
+// --- Visual Size Controls ---
+const LANE_WIDTH = 70; // Base lane width (was 30)
+const AVATAR_SIZE_FACTOR = 0.8; // Multiplier relative to lane width (was 0.9)
 
 // --- p5.js Sketch ---
 
@@ -230,7 +233,7 @@ function resetGame() {
 function calculateTrackGeometry() {
     const numLanes = horses.length > 0 ? horses.length : 1;
     const margin = 40;
-    const laneWidth = 30;
+    const laneWidth = LANE_WIDTH;
 
     const outerRectWidth = width - 2 * margin;
     const outerRectHeight = height - 2 * margin;
@@ -329,7 +332,7 @@ function getHorsePosition(horse) {
 
 
 function drawHorses() {
-    const avatarSize = trackGeometry.laneWidth * 0.9;
+    const avatarSize = trackGeometry.laneWidth * AVATAR_SIZE_FACTOR;
     imageMode(CENTER);
 
     horseObjects.forEach(horse => {
@@ -360,7 +363,8 @@ function drawWinnerMessage() {
     const totalTimeStr = overallRaceDurationSeconds.toFixed(2);
     const tieLabel = winner && winner._tie ? ' (tie)' : '';
     textSize(50);
-    text(`Winner${tieLabel}: ${winner.name}`, width / 2, height / 2 - 50);
+    // Trophy cup emoji near winner name
+    text(`🏆 Winner${tieLabel}: ${winner.name}`, width / 2, height / 2 - 50);
     textSize(24);
     text(`Winner Time: ${winnerTimeStr}s`, width / 2, height / 2);
     text(`Total Duration: ${totalTimeStr}s`, width / 2, height / 2 + 40);
