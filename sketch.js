@@ -414,13 +414,7 @@ function drawLeaderboard() {
         textStyle(NORMAL);
         fill(30);
         const rankStr = (i + 1).toString().padStart(2, '0');
-        let rightInfo;
-        if (h.finished) {
-            rightInfo = `${h.finishSeconds.toFixed(2)}s`;
-        } else {
-            const pctDisplay = Math.round((h.progress / h.totalDistance) * 100);
-            rightInfo = `${pctDisplay}%`;
-        }
+        let rightInfo = h.finished ? `${h.finishSeconds.toFixed(2)}s` : '...';
         // Background row accent (optional subtle)
         fill(230);
         rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
