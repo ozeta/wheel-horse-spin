@@ -1,14 +1,35 @@
 let horses = [];
+let horseObjects = [];
+let horseImages = {}; // Cache for loaded avatar images
 let horseList, addHorseBtn, clearDataBtn, runRaceBtn;
+let winner = null;
 
 // --- Game State & Configuration ---
+const MAX_EXECUTION_TIME = 10; // Target race duration in seconds
 const avatarStyles = [
     'adventurer', 'avataaars', 'big-ears', 'big-smile', 'bottts', 'croodles',
     'fun-emoji', 'lorelei', 'micah', 'miniavs', 'open-peeps', 'personas', 'pixel-art',
 ];
 let currentStyle;
+let gameState = 'setup'; // 'setup', 'racing', 'finished'
+
+// --- Racetrack Geometry ---
+let trackGeometry = {};
 
 // --- p5.js Sketch ---
+
+function preload() {
+    // Preload images if horses are already in localStorage
+    const storedHorses = localStorage.getItem('horses');
+    if (storedHorses) {
+        const stored = JSON.parse(storedHorses);
+        stored.forEach(horse => {
+            if (horse.avatar) {
+                horseImages[horse.name] = loadImage(horse.avatar);
+            }
+        });
+    }
+}
 
 function setup() {
     const canvasContainer = document.getElementById('canvas-container');
@@ -19,6 +40,7 @@ function setup() {
     const containerSize = canvasContainer.getBoundingClientRect();
     const canvas = createCanvas(containerSize.width, containerSize.height);
     canvas.parent('canvas-container');
+    frameRate(60); // Set a consistent frame rate for predictable speed
 
     // --- DOM Element Initialization ---
     horseList = document.getElementById('horse-list');
@@ -29,11 +51,7 @@ function setup() {
     // --- Event Listeners ---
     addHorseBtn.addEventListener('click', addHorse);
     clearDataBtn.addEventListener('click', clearAllData);
-    runRaceBtn.addEventListener('click', () => {
-        if (horses.length > 0) {
-            alert("The race will start now!"); // Placeholder
-        }
-    });
+    runRaceBtn.addEventListener('click', handleRaceButton);
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -41,8 +59,22 @@ function setup() {
 }
 
 function draw() {
-    background(0, 100, 0); // Dark green for the infield
+    background(0, 100, 0); // Dark green for infield and outer area
+    calculateTrackGeometry();
     drawTrack();
+
+    if (gameState === 'racing') {
+        updateHorses();
+        checkWinner();
+    }
+
+    if (horseObjects.length > 0) {
+        drawHorses();
+    }
+
+    if (gameState === 'finished' && winner) {
+        drawWinnerMessage();
+    }
 }
 
 function windowResized() {
@@ -50,67 +82,212 @@ function windowResized() {
     if (canvasContainer) {
         const containerSize = canvasContainer.getBoundingClientRect();
         resizeCanvas(containerSize.width, containerSize.height);
+        calculateTrackGeometry();
+        initializeHorseObjects();
     }
 }
 
-// --- Racetrack Drawing ---
+// --- Game Logic ---
 
-function drawTrack() {
-    const numHorses = horses.length > 0 ? horses.length : 1; // Draw at least one lane
-    const margin = 30;
-    const laneWidth = 25;
-    const trackWidth = numHorses * laneWidth;
+function handleRaceButton() {
+    if ((gameState === 'setup' || gameState === 'finished') && horses.length > 0) {
+        startRace();
+    }
+}
 
-    // Calculate the dimensions of the outer track boundary
+function startRace() {
+    gameState = 'racing';
+    winner = null;
+    runRaceBtn.style.display = 'none'; // Hide button during the race
+
+    // Reset progress and set initial speed for all horses
+    horseObjects.forEach(h => {
+        h.progress = 0;
+        // Calculate a speed that aims for the target race duration
+        const targetFrames = MAX_EXECUTION_TIME * 60; // e.g., 15 seconds * 60fps
+        const baseSpeed = h.totalDistance / targetFrames;
+        h.speed = random(baseSpeed * 0.9, baseSpeed * 1.1); // Start with a slight variation
+    });
+}
+
+function initializeHorseObjects() {
+    const { laneWidth, arcRadius, straightLength } = trackGeometry;
+    if (!arcRadius) return; // Don't run if geometry isn't calculated
+
+    horseObjects = horses.map((horse, i) => {
+        const lane = i;
+        const laneRadius = arcRadius - (lane * laneWidth) - (laneWidth / 2);
+        const totalDistance = (2 * straightLength) + (TWO_PI * laneRadius);
+
+        return {
+            ...horse,
+            lane: i,
+            progress: 0, // Distance covered
+            speed: 0,
+            totalDistance: totalDistance,
+            img: horseImages[horse.name]
+        };
+    });
+}
+
+function updateHorses() {
+    const targetFrames = MAX_EXECUTION_TIME * 60;
+    horseObjects.forEach(horse => {
+        const baseSpeed = horse.totalDistance / targetFrames;
+        // Fluctuate speed slightly around the base speed
+        horse.speed += random(-baseSpeed * 0.05, baseSpeed * 0.05);
+        // Constrain the speed to prevent it from becoming too fast or slow
+        horse.speed = constrain(horse.speed, baseSpeed * 0.8, baseSpeed * 1.2);
+
+        // Update progress based on speed
+        horse.progress += horse.speed;
+    });
+}
+
+function checkWinner() {
+    if (winner) return; // Stop checking once a winner is found
+
+    for (const horse of horseObjects) {
+        if (horse.progress >= horse.totalDistance) {
+            winner = horse;
+            gameState = 'finished';
+            runRaceBtn.textContent = 'New Race';
+            runRaceBtn.style.display = 'block';
+            break;
+        }
+    }
+}
+
+// --- Drawing Functions ---
+
+function calculateTrackGeometry() {
+    const numLanes = horses.length > 0 ? horses.length : 1;
+    const margin = 40;
+    const laneWidth = 30;
+
     const outerRectWidth = width - 2 * margin;
     const outerRectHeight = height - 2 * margin;
     const arcDiameter = outerRectHeight;
     const arcRadius = arcDiameter / 2;
-    const straightLength = outerRectWidth - arcDiameter;
+    const straightLength = max(0, outerRectWidth - arcDiameter);
 
-    // Center points for the arcs
-    const leftArcCenter = { x: margin + arcRadius, y: height / 2 };
-    const rightArcCenter = { x: margin + arcRadius + straightLength, y: height / 2 };
+    trackGeometry = {
+        margin,
+        laneWidth,
+        numLanes,
+        arcRadius,
+        straightLength,
+        leftArcCenter: { x: margin + arcRadius, y: height / 2 },
+        rightArcCenter: { x: margin + arcRadius + straightLength, y: height / 2 },
+    };
+}
 
-    // Draw from the outside in
-    for (let i = 0; i < numHorses; i++) {
+function drawTrack() {
+    const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
+
+    // --- Draw the track surface ---
+    const trackColor = color(210, 180, 140); // A single, light-brown color
+    noStroke();
+    fill(trackColor);
+
+    const outerRadius = arcRadius;
+    const innerRadius = arcRadius - (numLanes * laneWidth);
+
+    // Draw the main shape of the track
+    rectMode(CORNERS);
+    rect(leftArcCenter.x, leftArcCenter.y - outerRadius, rightArcCenter.x, rightArcCenter.y + outerRadius);
+    arc(leftArcCenter.x, leftArcCenter.y, outerRadius * 2, outerRadius * 2, HALF_PI, -HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, outerRadius * 2, outerRadius * 2, -HALF_PI, HALF_PI);
+
+    // Cut out the center of the track
+    fill(0, 100, 0); // Match the background color for the infield
+    rectMode(CORNERS);
+    rect(leftArcCenter.x, leftArcCenter.y - innerRadius, rightArcCenter.x, rightArcCenter.y + innerRadius);
+    arc(leftArcCenter.x, leftArcCenter.y, innerRadius * 2, innerRadius * 2, HALF_PI, -HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, innerRadius * 2, innerRadius * 2, -HALF_PI, HALF_PI);
+
+
+    // Draw lane divider lines from the outside in
+    stroke(255, 150); // White, semi-transparent lines
+    strokeWeight(2);
+    noFill();
+     for (let i = 1; i < numLanes; i++) {
         const currentRadius = arcRadius - i * laneWidth;
-        const laneColor = i % 2 === 0 ? color(210, 180, 140) : color(200, 170, 130); // Alternating tan colors
-
-        // --- Draw the track surface for this lane ---
-        noStroke();
-        fill(laneColor);
-
-        // Draw the two straight sections
-        rect(leftArcCenter.x, leftArcCenter.y - currentRadius, straightLength, currentRadius * 2);
-
-        // Draw the two semi-circular ends
-        arc(leftArcCenter.x, leftArcCenter.y, currentRadius * 2, currentRadius * 2, HALF_PI, -HALF_PI);
-        arc(rightArcCenter.x, rightArcCenter.y, currentRadius * 2, currentRadius * 2, -HALF_PI, HALF_PI);
-
-        // --- Draw the lane boundaries ---
-        stroke(255); // White lane lines
-        strokeWeight(2);
-        noFill();
-
-        // Draw outer boundary of the current lane
         if (currentRadius > 0) {
+            // Arcs
             arc(leftArcCenter.x, leftArcCenter.y, currentRadius * 2, currentRadius * 2, HALF_PI, PI + HALF_PI);
-            line(leftArcCenter.x, leftArcCenter.y - currentRadius, rightArcCenter.x, rightArcCenter.y - currentRadius);
             arc(rightArcCenter.x, rightArcCenter.y, currentRadius * 2, currentRadius * 2, PI + HALF_PI, HALF_PI);
+            // Straight lines
+            line(leftArcCenter.x, leftArcCenter.y - currentRadius, rightArcCenter.x, rightArcCenter.y - currentRadius);
             line(rightArcCenter.x, rightArcCenter.y + currentRadius, leftArcCenter.x, leftArcCenter.y + currentRadius);
         }
     }
 
     // --- Draw Finish Line ---
-    const finishLineStart = { x: rightArcCenter.x, y: rightArcCenter.y - arcRadius };
-    const finishLineEnd = { x: rightArcCenter.x, y: rightArcCenter.y + arcRadius };
-    
-    stroke(255, 0, 0); // Red finish line
+    const finishLineX = leftArcCenter.x;
+    const finishLineYStart = leftArcCenter.y - arcRadius;
+    const finishLineYEnd = leftArcCenter.y + arcRadius;
+    stroke(255, 0, 0);
     strokeWeight(4);
-    line(finishLineStart.x, finishLineStart.y, finishLineEnd.x, finishLineEnd.y);
+    line(finishLineX, finishLineYStart, finishLineX, finishLineYEnd);
 }
 
+function getHorsePosition(horse) {
+    const { laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
+    const laneRadius = arcRadius - (horse.lane * laneWidth) - (laneWidth / 2);
+
+    // Define the length of each segment of the track for this lane
+    const topStraightEnd = straightLength;
+    const rightArcEnd = topStraightEnd + PI * laneRadius;
+    const bottomStraightEnd = rightArcEnd + straightLength;
+    const totalLapDistance = bottomStraightEnd + PI * laneRadius;
+
+    let progress = horse.progress % totalLapDistance;
+    let x, y;
+
+    if (progress < topStraightEnd) { // On the top straight
+        x = leftArcCenter.x + progress;
+        y = leftArcCenter.y - laneRadius;
+    } else if (progress < rightArcEnd) { // On the right arc
+        const angle = map(progress, topStraightEnd, rightArcEnd, -HALF_PI, HALF_PI);
+        x = rightArcCenter.x + cos(angle) * laneRadius;
+        y = rightArcCenter.y + sin(angle) * laneRadius;
+    } else if (progress < bottomStraightEnd) { // On the bottom straight
+        x = rightArcCenter.x - (progress - rightArcEnd);
+        y = rightArcCenter.y + laneRadius;
+    } else { // On the left arc
+        const angle = map(progress, bottomStraightEnd, totalLapDistance, HALF_PI, PI + HALF_PI);
+        x = leftArcCenter.x + cos(angle) * laneRadius;
+        y = leftArcCenter.y + sin(angle) * laneRadius;
+    }
+    return { x, y };
+}
+
+
+function drawHorses() {
+    const avatarSize = trackGeometry.laneWidth * 0.9;
+    imageMode(CENTER);
+
+    horseObjects.forEach(horse => {
+        if (!horse.img || !horse.img.width) return; // Don't draw if image not loaded
+
+        const pos = getHorsePosition(horse);
+
+        // Draw the horse avatar
+        image(horse.img, pos.x, pos.y, avatarSize, avatarSize);
+    });
+}
+
+function drawWinnerMessage() {
+    fill(0, 0, 0, 150); // Semi-transparent black overlay
+    rectMode(CORNER);
+    rect(0, 0, width, height);
+
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(50);
+    text(`Winner is ${winner.name}!`, width / 2, height / 2);
+}
 
 // --- Data Persistence & Horse Management ---
 
@@ -124,9 +301,15 @@ function loadHorses() {
         horses = JSON.parse(storedHorses);
     }
     renderHorseList();
+    calculateTrackGeometry(); // Ensure geometry is ready
+    initializeHorseObjects(); // Prepare horses for drawing
 }
 
 function addHorse() {
+    if (gameState === 'racing') {
+        alert("Cannot add horses while a race is in progress.");
+        return;
+    }
     const horseName = prompt("Enter the new horse's name:");
     if (horseName && horseName.trim() !== '') {
         if (horses.length >= 10) {
@@ -134,21 +317,42 @@ function addHorse() {
             return;
         }
         const avatarUrl = `https://api.dicebear.com/8.x/${currentStyle}/svg?seed=${encodeURIComponent(horseName.trim())}`;
-        horses.push({ name: horseName.trim(), avatar: avatarUrl });
-        saveHorses();
-        renderHorseList();
+
+        // Load the new image and then update the state
+        horseImages[horseName.trim()] = loadImage(avatarUrl, () => {
+            horses.push({ name: horseName.trim(), avatar: avatarUrl });
+            saveHorses();
+            renderHorseList();
+            calculateTrackGeometry();
+            initializeHorseObjects();
+        });
     }
 }
 
 function deleteHorse(index) {
+    if (gameState === 'racing') {
+        alert("Cannot delete horses while a race is in progress.");
+        return;
+    }
+    const horseName = horses[index].name;
+    delete horseImages[horseName]; // Remove from cache
+
     horses.splice(index, 1);
     saveHorses();
     renderHorseList();
+    calculateTrackGeometry();
+    initializeHorseObjects();
 }
 
 function clearAllData() {
+    if (gameState === 'racing') {
+        alert("Cannot clear data while a race is in progress.");
+        return;
+    }
     if (confirm("Are you sure you want to delete all horse data? This cannot be undone.")) {
         horses = [];
+        horseObjects = [];
+        horseImages = {};
         localStorage.removeItem('horses');
         renderHorseList();
     }
@@ -182,5 +386,11 @@ function renderHorseList() {
         horseList.appendChild(li);
     });
 
-    runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
+    // Update button based on state
+    if (gameState === 'setup' || gameState === 'finished') {
+        runRaceBtn.textContent = 'Run Race';
+        runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
+    } else {
+        runRaceBtn.style.display = 'none';
+    }
 }
