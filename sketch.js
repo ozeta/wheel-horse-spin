@@ -271,6 +271,13 @@ function drawHorses() {
 
         // Draw the horse avatar
         image(horse.img, pos.x, pos.y, avatarSize, avatarSize);
+
+        // Draw the horse's name to the right of the avatar
+        fill(0); // Black text
+        noStroke();
+        textSize(16);
+        textAlign(LEFT, CENTER);
+        text(horse.name, pos.x + avatarSize / 2 + 5, pos.y);
     });
 }
 
