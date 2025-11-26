@@ -1,7 +1,7 @@
 let horses = [];
 let horseObjects = [];
 let horseImages = {}; // Cache for loaded avatar images
-let horseList, addHorseBtn, clearDataBtn, runRaceBtn;
+let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn;
 let winner = null;
 
 // --- Game State & Configuration ---
@@ -48,11 +48,13 @@ function setup() {
     addHorseBtn = document.getElementById('add-horse');
     clearDataBtn = document.getElementById('clear-data');
     runRaceBtn = document.getElementById('run-race');
+    resetGameBtn = document.getElementById('reset-game');
 
     // --- Event Listeners ---
     addHorseBtn.addEventListener('click', addHorse);
     clearDataBtn.addEventListener('click', clearAllData);
     runRaceBtn.addEventListener('click', handleRaceButton);
+    resetGameBtn.addEventListener('click', resetGame);
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -100,6 +102,7 @@ function startRace() {
     gameState = 'racing';
     winner = null;
     runRaceBtn.style.display = 'none'; // Hide button during the race
+    resetGameBtn.style.display = 'block'; // Show reset button during race
 
     // Reset progress and set initial speed for all horses
     horseObjects.forEach(h => {
@@ -154,9 +157,27 @@ function checkWinner() {
             gameState = 'finished';
             runRaceBtn.textContent = 'New Race';
             runRaceBtn.style.display = 'block';
+            resetGameBtn.style.display = 'none'; // Hide reset when finished
             break;
         }
     }
+}
+
+// --- Reset Game ---
+function resetGame() {
+    // Return to setup state without clearing horses
+    gameState = 'setup';
+    winner = null;
+    // Reset horse progress and speed
+    horseObjects.forEach(h => {
+        h.progress = 0;
+        h.speed = 0;
+    });
+    initializeHorseObjects();
+    // Show Run Race button again if horses exist
+    runRaceBtn.textContent = 'Run Race';
+    runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
+    resetGameBtn.style.display = 'none';
 }
 
 // --- Drawing Functions ---
@@ -395,7 +416,11 @@ function renderHorseList() {
     if (gameState === 'setup' || gameState === 'finished') {
         runRaceBtn.textContent = 'Run Race';
         runRaceBtn.style.display = horses.length > 0 ? 'block' : 'none';
+        resetGameBtn.style.display = 'none';
     } else {
         runRaceBtn.style.display = 'none';
+        if (gameState === 'racing') {
+            resetGameBtn.style.display = 'block';
+        }
     }
 }

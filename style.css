@@ -161,3 +161,11 @@ body, html {
 #clear-data:hover {
     background-color: #c82333;
 }
+
+#reset-game {
+    background-color: #fd7e14; /* Orange for reset action */
+}
+
+#reset-game:hover {
+    background-color: #e36404;
+}
