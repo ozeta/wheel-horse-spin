@@ -25,6 +25,7 @@ const FINISH_LINE_WIDTH = 100; // px, wide enough for avatar and name
 // --- Visual Size Controls ---
 const LANE_WIDTH = 70; // Base lane width (was 30)
 const AVATAR_SIZE_FACTOR = 0.8; // Multiplier relative to lane width (was 0.9)
+const DECELERATION_DURATION_MS = 2000; // Coast for ~2s after crossing finish
 
 // --- p5.js Sketch ---
 
@@ -169,28 +170,43 @@ function updateHorses() {
             horse.speed = constrain(horse.speed, baseSpeed * 0.8, baseSpeed * 1.2);
             horse.progress += horse.speed;
             if (horse.progress >= horse.totalDistance) {
-                horse.progress = horse.totalDistance; // clamp
+                // Crossed finish: mark finished and initiate deceleration phase
                 horse.finished = true;
                 const rawFinishMillis = millis() - raceStartMillis - pausedAccumulatedMillis;
                 horse.finishSeconds = rawFinishMillis / 1000.0;
+                // Start deceleration
+                horse.decelerating = true;
+                horse.decelStartMillis = millis();
+                horse.decelInitialSpeed = horse.speed;
+                horse.decelDurationMs = DECELERATION_DURATION_MS;
             }
         } else {
-            // Decelerate to full stop
-            if (horse.speed > 0.05) {
-                horse.speed *= 0.85;
+            // Decelerate smoothly and coast past the finish line
+            if (horse.decelerating) {
+                const elapsed = millis() - (horse.decelStartMillis || millis());
+                const duration = horse.decelDurationMs || DECELERATION_DURATION_MS;
+                const t = constrain(elapsed / duration, 0, 1);
+                horse.speed = max(0, (horse.decelInitialSpeed || 0) * (1 - t));
+                horse.progress += horse.speed;
+                if (t >= 1) {
+                    horse.decelerating = false;
+                    horse.speed = 0;
+                }
             } else {
                 horse.speed = 0;
             }
-            horse.progress = horse.totalDistance; // keep at finish
         }
     });
 }
 
 function checkRaceCompletion() {
     if (gameState !== 'racing') return;
-    // If any horse not finished, keep racing
+    // Require all horses to have crossed the finish line first
     const allFinished = horseObjects.every(h => h.finished);
     if (!allFinished) return;
+    // Then wait until all finished horses have completed deceleration (speed == 0)
+    const allStopped = horseObjects.every(h => h.finished && !h.decelerating && h.speed === 0);
+    if (!allStopped) return;
 
     // Determine winner by earliest finishSeconds
     const minTime = Math.min(...horseObjects.map(h => h.finishSeconds));
