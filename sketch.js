@@ -9,6 +9,9 @@ let raceElapsedSeconds = 0; // captured when race finishes
 let pauseStartMillis = 0; // when pause initiated
 let pausedAccumulatedMillis = 0; // total paused duration
 let overallRaceDurationSeconds = 0; // time when last horse finishes
+// --- Persistent Stats ---
+// Structure: { HorseName: { wins: Number, losses: Number, bestTime: Number|null, lastWinTime: Number|null } }
+let horseStats = {};
 
 // --- Game State & Configuration ---
 const MAX_EXECUTION_TIME = 10; // Target race duration in seconds
@@ -95,6 +98,7 @@ function draw() {
     if (gameState === 'finished' && winner) {
         drawWinnerMessage();
         drawFinalLeaderboard();
+        drawResultsYamlPanel();
     }
 }
 
@@ -215,6 +219,9 @@ function checkRaceCompletion() {
     const lastTime = Math.max(...horseObjects.map(h => h.finishSeconds));
     raceElapsedSeconds = minTime; // winner's time
     overallRaceDurationSeconds = lastTime; // total race duration
+
+    // Update persistent stats now that race fully completed
+    updateStatsAfterRace(firstFinishers);
 
     gameState = 'finished';
     runRaceBtn.textContent = 'New Race';
@@ -532,9 +539,150 @@ function loadHorses() {
             horses = JSON.parse(storedHorses);
         }
     }
+    // Ensure stats entries exist for current horses
+    loadHorseStats();
     renderHorseList();
     calculateTrackGeometry(); // Ensure geometry is ready
     initializeHorseObjects(); // Prepare horses for drawing
+}
+
+// --- Stats Persistence ---
+function loadHorseStats() {
+    const stored = localStorage.getItem('horseStats');
+    if (stored) {
+        try {
+            horseStats = JSON.parse(stored) || {};
+        } catch (e) {
+            horseStats = {};
+        }
+    }
+    // Ensure each current horse has an entry
+    horses.forEach(h => {
+        if (!horseStats[h.name]) {
+            horseStats[h.name] = { wins: 0, losses: 0, bestTime: null, lastWinTime: null };
+        }
+    });
+    saveHorseStats();
+}
+
+function saveHorseStats() {
+    localStorage.setItem('horseStats', JSON.stringify(horseStats));
+}
+
+function updateStatsAfterRace(winnerObjects) {
+    if (!winnerObjects || winnerObjects.length === 0) return;
+    const winnerTime = winnerObjects[0].finishSeconds;
+    const winnerNames = new Set(winnerObjects.map(w => w.name));
+    horseObjects.forEach(h => {
+        // Initialize if missing (defensive)
+        if (!horseStats[h.name]) {
+            horseStats[h.name] = { wins: 0, losses: 0, bestTime: null, lastWinTime: null };
+        }
+        const stats = horseStats[h.name];
+        if (winnerNames.has(h.name)) {
+            stats.wins += 1;
+            stats.lastWinTime = Date.now();
+        } else {
+            stats.losses += 1;
+        }
+        if (stats.bestTime === null || h.finishSeconds < stats.bestTime) {
+            stats.bestTime = h.finishSeconds;
+        }
+    });
+    saveHorseStats();
+}
+
+function drawResultsYamlPanel() {
+    // Build YAML representation
+    const lines = ['stats:'];
+    horses.forEach(h => {
+        const s = horseStats[h.name] || { wins: 0, losses: 0, bestTime: null, lastWinTime: null };
+        const bestTimeStr = s.bestTime === null ? 'null' : s.bestTime.toFixed(2);
+        const lastWinStr = s.lastWinTime ? new Date(s.lastWinTime).toISOString() : 'null';
+        lines.push(`  - name: ${h.name}`);
+        lines.push(`    wins: ${s.wins}`);
+        lines.push(`    losses: ${s.losses}`);
+        lines.push(`    bestTime: ${bestTimeStr}`);
+        lines.push(`    lastWin: ${lastWinStr}`);
+    });
+
+    const padding = 12;
+    const lineHeight = 18;
+    const boxWidth = Math.min(480, width * 0.55);
+    const boxHeight = padding * 2 + lineHeight * (lines.length + 1);
+    const boxX = 20;
+    const boxY = height - boxHeight - 20; // anchor near bottom-left
+
+    // Copy button geometry (inside panel bottom-right)
+    const copyBtnWidth = 70;
+    const copyBtnHeight = 26;
+    const copyBtnX = boxX + boxWidth - copyBtnWidth - padding;
+    const copyBtnY = boxY + boxHeight - copyBtnHeight - padding;
+    const prevMeta = window._yamlPanelMeta || {};
+    // Store meta for mouse interaction, keep last copied timestamp
+    window._yamlPanelMeta = {
+        lines,
+        boxX, boxY, boxWidth, boxHeight,
+        copyBtn: { x: copyBtnX, y: copyBtnY, w: copyBtnWidth, h: copyBtnHeight },
+        justCopied: prevMeta.justCopied || null
+    };
+
+    rectMode(CORNER);
+    noStroke();
+    fill(255, 255, 255, 220);
+    rect(boxX, boxY, boxWidth, boxHeight, 10);
+
+    fill(30);
+    textAlign(LEFT, TOP);
+    textSize(16);
+    textStyle(BOLD);
+    text('Horse Stats (YAML)', boxX + padding, boxY + padding);
+    textStyle(NORMAL);
+    textSize(14);
+    textFont('monospace');
+    lines.forEach((ln, i) => {
+        text(ln, boxX + padding, boxY + padding + lineHeight * (i + 1));
+    });
+
+    // Determine hover/click states
+    const isHover = mouseX >= copyBtnX && mouseX <= copyBtnX + copyBtnWidth && mouseY >= copyBtnY && mouseY <= copyBtnY + copyBtnHeight;
+    const clickedRecently = window._yamlPanelMeta.justCopied && (millis() - window._yamlPanelMeta.justCopied < 900);
+    let btnColor;
+    if (clickedRecently) {
+        // Confirmation color (greenish)
+        btnColor = color(40, 160, 70);
+    } else if (isHover) {
+        // Hover color (brighter blue)
+        btnColor = color(55, 145, 230);
+    } else {
+        // Normal color
+        btnColor = color(40, 120, 200);
+    }
+    fill(btnColor);
+    rect(copyBtnX, copyBtnY, copyBtnWidth, copyBtnHeight, 6);
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(14);
+    text(clickedRecently ? 'Copied' : 'Copy', copyBtnX + copyBtnWidth / 2, copyBtnY + copyBtnHeight / 2);
+}
+
+// Handle copy button click
+function mousePressed() {
+    if (gameState !== 'finished' || !window._yamlPanelMeta) return;
+    const { copyBtn, lines } = window._yamlPanelMeta;
+    if (
+        mouseX >= copyBtn.x && mouseX <= copyBtn.x + copyBtn.w &&
+        mouseY >= copyBtn.y && mouseY <= copyBtn.y + copyBtn.h
+    ) {
+        const yamlText = lines.join('\n');
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(yamlText).then(() => {
+                window._yamlPanelMeta.justCopied = millis();
+            }).catch(() => {
+                console.warn('Clipboard copy failed');
+            });
+        }
+    }
 }
 
 function addHorse() {
