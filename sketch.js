@@ -13,6 +13,9 @@ let overallRaceDurationSeconds = 0; // time when last horse finishes
 // Structure: { HorseName: { wins: Number, losses: Number, bestTime: Number|null, lastWinTime: Number|null } }
 let horseStats = {};
 
+// --- Chessboard SVG ---
+let chessboardImg;
+
 // --- Game State & Configuration ---
 const MAX_EXECUTION_TIME = 10; // Target race duration in seconds
 const avatarStyles = [
@@ -43,6 +46,9 @@ function preload() {
             }
         });
     }
+
+    // Preload chessboard SVG
+    // chessboardImg = loadImage('chessboard.svg');
 }
 
 function setup() {
@@ -312,14 +318,31 @@ function drawTrack() {
         }
     }
 
-    // --- Draw Finish Line as a rectangle ---
+    // --- Draw Finish Line as a rectangle with chessboard pattern ---
     const finishLineX = leftArcCenter.x;
     const finishLineYStart = leftArcCenter.y - arcRadius;
     const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
+    const rectW = FINISH_LINE_WIDTH;
+    const rectH = finishLineYEnd - finishLineYStart;
     noStroke();
-    fill(255, 0, 0);
     rectMode(CORNERS);
-    rect(finishLineX, finishLineYStart, finishLineX + FINISH_LINE_WIDTH, finishLineYEnd);
+
+    // Draw chessboard pattern (8x8)
+    const tiles = 8;
+    const tileW = rectW / tiles;
+    const tileH = rectH / tiles;
+    for (let row = 0; row < tiles; row++) {
+        for (let col = 0; col < tiles; col++) {
+            let isDark = (row + col) % 2 === 1;
+            fill(isDark ? color(181, 136, 99) : color(240, 217, 181));
+            rect(
+                finishLineX + col * tileW,
+                finishLineYStart + row * tileH,
+                finishLineX + (col + 1) * tileW,
+                finishLineYStart + (row + 1) * tileH
+            );
+        }
+    }
 }
 
 function getHorsePosition(horse) {
