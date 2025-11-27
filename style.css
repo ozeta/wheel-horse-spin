@@ -63,6 +63,31 @@ body, html {
     flex-direction: column;
     justify-content: space-between;
     padding: 20px;
+    position: relative;
+}
+/* GitHub link styles */
+#github-link {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 12px;
+    text-align: center;
+    font-size: 15px;
+    opacity: 0.85;
+}
+#github-link a {
+    color: #181717;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: background 0.18s;
+}
+#github-link a:hover {
+    background: #f6f8fa;
+    opacity: 1;
 }
 
 .sidebar h2 {
@@ -135,6 +160,7 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    padding-bottom: 48px; /* Ensure space for GitHub link */
     padding-top: 20px;
     border-top: 1px solid #dddfe2;
 }
