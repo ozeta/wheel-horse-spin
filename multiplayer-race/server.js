@@ -24,7 +24,8 @@ const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 10;
 const COUNTDOWN_SECONDS = 5;
-const TICK_RATE_HZ = 15;
+// Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
+const TICK_RATE_HZ = 30;
 const BOOST_FACTOR = 1.4;
 const BOOST_MAX_DURATION_MS = 500;
 const BOOST_COOLDOWN_MS = 1000;
@@ -334,7 +335,7 @@ function updateRace(room) {
 
   // helper jitter using Math.random; seeds can be used later for deterministic PRNG
   function speedWithJitter(boostActive) {
-    const jitter = (Math.random() - 0.5) * 0.1; // ±5%
+    const jitter = (Math.random() - 0.5) * 0.06; // ±3%
     let speed = baseSpeed * (1 + jitter);
     if (boostActive) speed *= BOOST_FACTOR;
     return speed;

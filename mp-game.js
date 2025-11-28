@@ -10,6 +10,7 @@ const MP = {
   hostId: null,
   phase: 'lobby', // lobby|countdown|race|results
   players: [],
+  bots: [],
   countdownEndsAt: null,
   room: null,
   username: null,
@@ -92,6 +93,7 @@ function handleMessage(msg) {
       MP.phase = msg.phase;
       MP.hostId = msg.hostId;
       MP.players = (msg.players || []).map(p => ({ id: p.id, username: p.username, ready: p.ready, lane: p.lane }));
+      MP.bots = (msg.bots || []).map(b => ({ lane: b.lane, username: b.username }));
       renderPlayers();
       updateButtons();
       buildTrackObjectsFromPlayers();
@@ -114,8 +116,9 @@ function handleMessage(msg) {
         const remaining = Math.max(0, Math.round((MP.countdownEndsAt - Date.now()) / 1000));
         countdownHeader.textContent = `Countdown: ${remaining}s`;
       }
-      if (MP.phase === 'race' && msg.players) {
-        syncRaceProgress(msg.players);
+      if (MP.phase === 'race') {
+        if (msg.players) syncRaceProgress(msg.players);
+        if (msg.bots) syncBotProgress(msg.bots);
       }
       break;
     case 'raceEnd':
@@ -181,12 +184,20 @@ function doRename() {
 // --- (Optional) Race Rendering Placeholder ---
 // We could reuse full track rendering later; for now a minimal p5 canvas with phase label.
 // --- Track Rendering (adapted from single-player sketch) ---
+// --- Rendering Constants (tweak as desired) ---
 let trackGeometry = {};
-const LANE_WIDTH = 70; // match main sketch
-const AVATAR_SIZE_FACTOR = 0.8;
-const FINISH_LINE_WIDTH = 100;
+const LANE_WIDTH = 40; // Lane thickness in pixels
+const AVATAR_SIZE_FACTOR = 0.8; // Avatar size relative to lane width
+const FINISH_LINE_WIDTH = 100; // Finish line chessboard width
+const TOTAL_LANES = 10; // Always show all lanes, including bots
+const INTERP_ALPHA = 0.25; // Smoothing factor toward server target (0..1)
 let trackObjects = []; // { id, username, lane, progress, remoteProgress, totalDistance, img }
-let avatarStyle = 'open-peeps';
+// DiceBear avatar style selection (random like sketch.js)
+const AVATAR_STYLES = [
+  'adventurer', 'avataaars', 'big-ears', 'big-smile', 'bottts', 'croodles',
+  'fun-emoji', 'lorelei', 'micah', 'miniavs', 'open-peeps', 'personas', 'pixel-art'
+];
+let avatarStyle = AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)];
 
 function setup() {
   const canvasContainer = document.getElementById('canvas-container');
@@ -207,7 +218,7 @@ function windowResized() {
 }
 
 function calculateTrackGeometry() {
-  const numLanes = trackObjects.length > 0 ? trackObjects.length : Math.max(MP.players.length, 1);
+  const numLanes = TOTAL_LANES;
   const margin = 40;
   const laneWidth = LANE_WIDTH;
   const outerRectWidth = width - 2 * margin;
@@ -337,19 +348,23 @@ function drawTrackObjects() {
 }
 
 function buildTrackObjectsFromPlayers() {
-  // Build / refresh trackObjects from MP.players (ignore bots for lobby render)
-  trackObjects = (MP.players || []).slice().sort((a,b)=>a.lane - b.lane).map(p => {
-    const avatarUrl = `https://api.dicebear.com/8.x/${avatarStyle}/svg?seed=${encodeURIComponent(p.username)}`;
+  // Build / refresh trackObjects from humans + bots so all lanes show
+  const humans = (MP.players || []).map(p => ({ id: p.id, username: p.username, lane: p.lane, isBot: false }));
+  const bots = (MP.bots || []).map(b => ({ id: `bot:${b.lane}`, username: b.username || `Bot_${b.lane+1}`, lane: b.lane, isBot: true }));
+  const combined = humans.concat(bots).sort((a,b)=>a.lane - b.lane);
+  trackObjects = combined.map(entry => {
+    const avatarUrl = `https://api.dicebear.com/8.x/${avatarStyle}/svg?seed=${encodeURIComponent(entry.username)}`;
     const img = loadImage(avatarUrl);
     return {
-      id: p.id,
-      username: p.username,
-      lane: p.lane,
+      id: entry.id,
+      username: entry.username,
+      lane: entry.lane,
       progress: 0,
       remoteProgress: 0,
       totalDistance: 0,
       img,
       finished: false,
+      isBot: entry.isBot,
     };
   });
   calculateTrackGeometry();
@@ -359,9 +374,22 @@ function syncRaceProgress(playersProgress) {
   playersProgress.forEach(pp => {
     const obj = trackObjects.find(o => o.id === pp.id);
     if (!obj || !obj.totalDistance) return;
+    // Interpolate toward latest server progress for smoothness
+    const target = (pp.progress || 0) * obj.totalDistance;
     obj.remoteProgress = pp.progress; // normalized 0..1
-    obj.progress = obj.remoteProgress * obj.totalDistance;
+    obj.progress = obj.progress + (target - obj.progress) * INTERP_ALPHA; // simple lerp
     obj.finished = pp.finished;
+  });
+}
+
+function syncBotProgress(botsProgress) {
+  botsProgress.forEach(bp => {
+    const obj = trackObjects.find(o => o.isBot && o.lane === bp.lane);
+    if (!obj || !obj.totalDistance) return;
+    const target = (bp.progress || 0) * obj.totalDistance;
+    obj.remoteProgress = bp.progress;
+    obj.progress = obj.progress + (target - obj.progress) * INTERP_ALPHA;
+    obj.finished = bp.finished;
   });
 }
 
@@ -372,8 +400,7 @@ function draw() {
   // Draw avatars even in lobby so arrivals appear immediately
   drawTrackObjects();
   // Countdown overlay text in header already handled; show phase label subtle corner
-  fill(255); textAlign(RIGHT, TOP); textSize(14);
-  text(MP.phase.toUpperCase(), width - 12, 6);
+  // Phase label removed per request
   if (MP.phase === 'results') {
     fill(255); textAlign(CENTER, CENTER); textSize(22);
     text('Race complete', width/2, height - 40);
