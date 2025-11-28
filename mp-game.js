@@ -19,7 +19,7 @@ const MP = {
 // DOM references
 let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
-    raceOverlay;
+    raceOverlay, lobbySection;
 // Config captured from URL or defaults
 MP.serverUrl = 'ws://localhost:8080';
 
@@ -27,6 +27,7 @@ MP.serverUrl = 'ws://localhost:8080';
 window.addEventListener('DOMContentLoaded', () => {
   displayServer = document.getElementById('displayServer');
   displayRoom = document.getElementById('displayRoom');
+  lobbySection = document.getElementById('lobby');
   connectBtn = document.getElementById('connectBtn');
   readyBtn = document.getElementById('readyBtn');
   startBtn = document.getElementById('startBtn');
@@ -100,16 +101,19 @@ function handleMessage(msg) {
       countdownHeader.style.display = 'none';
       if (MP.phase === 'lobby') {
         raceOverlay.style.display = 'none';
+        if (lobbySection) lobbySection.style.display = 'block';
       }
       break;
     case 'countdown':
       MP.phase = 'countdown';
       MP.countdownEndsAt = msg.countdownEndsAt;
       countdownHeader.style.display = 'block';
+      if (lobbySection) lobbySection.style.display = 'block';
       break;
     case 'raceStart':
       MP.phase = 'race'; countdownHeader.style.display = 'none'; raceOverlay.style.display = 'none';
       buildTrackObjectsFromPlayers(); // ensure roster locked for race
+      if (lobbySection) lobbySection.style.display = 'none';
       break;
     case 'tick':
       if (MP.phase === 'countdown' && MP.countdownEndsAt) {
@@ -123,6 +127,7 @@ function handleMessage(msg) {
       break;
     case 'raceEnd':
       MP.phase = 'results'; raceOverlay.style.display = 'flex';
+      if (lobbySection) lobbySection.style.display = 'block';
       break;
     case 'boost':
       // ignore for lobby UI
