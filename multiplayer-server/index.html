@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SPACE Press Multiplayer Test (fixed)</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 18px; }
+  #controls { margin-bottom: 18px; }
+  .slot { border: 1px solid #ddd; padding: 8px; margin: 6px 0; display:flex; justify-content:space-between; }
+  .disconnected { opacity: 0.45; }
+  #countdown { font-size: 48px; font-weight:700; text-align:center; margin:12px 0; height:56px; }
+  #gameSlots, #slots { min-height: 200px; }
+  #log { height: 160px; overflow:auto; background:#f8f8f8; padding:8px; border:1px solid #eee; }
+</style>
+</head>
+<body>
+
+<h1>SPACE Press Multiplayer (client)</h1>
+
+<div id="controls">
+  <button id="joinBtn">Join Lobby</button>
+  <button id="startBtn" disabled>Start Game (local countdown)</button>
+  <span>Players: <strong id="playersCount">0</strong>/10</span>
+</div>
+
+<div id="countdown"></div>
+
+<h2>Lobby</h2>
+<div id="slots"></div>
+
+<h2 style="margin-top:18px">Game</h2>
+<div>Time remaining: <span id="timeRemaining">0</span> ms</div>
+<div id="gameSlots"></div>
+
+<h3>Log</h3>
+<pre id="log"></pre>
+
+<script>
+const WS_URL = "ws://localhost:8080";
+const MAX_PLAYERS = 10;
+
+let ws = null;
+let myPlayerId = null;
+let gameActive = false; // reflects server authoritative state
+let localCountdownTimer = null;
+
+// DOM
+const joinBtn = document.getElementById("joinBtn");
+const startBtn = document.getElementById("startBtn");
+const playersCountEl = document.getElementById("playersCount");
+const slotsEl = document.getElementById("slots");
+const gameSlotsEl = document.getElementById("gameSlots");
+const timeRemainingEl = document.getElementById("timeRemaining");
+const countdownEl = document.getElementById("countdown");
+const logEl = document.getElementById("log");
+
+// helper log
+function log(msg) {
+  logEl.textContent += msg + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// initial empty slots
+function renderEmptySlots() {
+  slotsEl.innerHTML = "";
+  for (let i = 0; i < MAX_PLAYERS; i++) {
+    const d = document.createElement("div");
+    d.className = "slot disconnected";
+    d.innerHTML = `<span>—</span><span>0</span>`;
+    slotsEl.appendChild(d);
+  }
+}
+renderEmptySlots();
+
+// open WS connection and handlers
+joinBtn.addEventListener("click", () => {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    log("Connected to server");
+  };
+
+  ws.onmessage = (ev) => {
+    let data;
+    try { data = JSON.parse(ev.data); } catch(e) { return; }
+
+    // always record last server scores so UI helpers can use it
+    if (data.type === "update") {
+      // store last server state globally for UI helpers
+      window._lastServerScores = data.scores || [];
+      window._lastServerStatus = data.status;
+      window._lastServerRemaining = data.remaining ?? 0;
+      // reflect authoritative server state in client
+      gameActive = data.status === "playing";
+      timeRemainingEl.textContent = data.remaining ?? 0;
+      playersCountEl.textContent = (data.scores || []).filter(p => p.connected).length;
+      renderSlotsFromServer(data.scores);
+      renderGameFromServer(data.scores, data.remaining);
+      // enable start button (UI) only if server reports enough players connected
+      const connectedCount = (data.scores || []).filter(p => p.connected).length;
+      startBtn.disabled = connectedCount !== MAX_PLAYERS;
+    }
+
+    if (data.type === "welcome") {
+      myPlayerId = data.id;
+      log(`Welcome: id=${myPlayerId}`);
+      // if the server also returned a playersCount, use it
+      if (typeof data.playersCount === "number") {
+        playersCountEl.textContent = data.playersCount;
+      }
+    }
+
+    if (data.type === "finished") {
+      log(`🏆 Finished — winner: ${Array.isArray(data.winner) ? data.winner.join(",") : data.winner} score=${data.score}`);
+      // server finished -> gameActive false
+      gameActive = false;
+      // after finish the server will reset to waiting and broadcast update
+    }
+
+    if (data.type === "rate_limited") {
+      // the server sent rate_limited to the socket that triggered it
+      log("⚠ rate limited message from server");
+    }
+  };
+
+  ws.onclose = () => {
+    log("Disconnected from server");
+    gameActive = false;
+  };
+
+  ws.onerror = (err) => {
+    log("WS error: " + (err && err.message));
+  };
+});
+
+// Render lobby slots from server scores array
+function renderSlotsFromServer(scores) {
+  slotsEl.innerHTML = "";
+  // ensure array length = MAX_PLAYERS for ordered slots where possible
+  const arr = scores ? scores.slice(0, MAX_PLAYERS) : [];
+  for (let i = 0; i < MAX_PLAYERS; i++) {
+    const p = arr[i];
+    const div = document.createElement("div");
+    div.className = "slot" + (p && p.connected ? "" : " disconnected");
+    div.innerHTML = `<span style="font-family:monospace">${p ? p.id : "—"}</span><span>${p ? p.score : 0}</span>`;
+    slotsEl.appendChild(div);
+  }
+}
+
+// Render game area (unordered, show all known players)
+function renderGameFromServer(scores, remaining) {
+  gameSlotsEl.innerHTML = "";
+  const list = (scores || []).slice().sort((a,b) => b.score - a.score);
+  list.forEach(p => {
+    const div = document.createElement("div");
+    div.className = "slot" + (p.connected ? "" : " disconnected");
+    div.innerHTML = `<span style="width:70%">${p.id}</span><span style="width:30%; text-align:right;">${p.score}</span>`;
+    gameSlotsEl.appendChild(div);
+  });
+  timeRemainingEl.textContent = remaining ?? 0;
+}
+
+// Start button: local 3s countdown visual only
+startBtn.addEventListener("click", () => {
+  if (localCountdownTimer) clearInterval(localCountdownTimer);
+  let sec = 3;
+  countdownEl.textContent = sec;
+  localCountdownTimer = setInterval(() => {
+    sec--;
+    if (sec > 0) {
+      countdownEl.textContent = sec;
+    } else {
+      clearInterval(localCountdownTimer);
+      countdownEl.textContent = "GO!";
+      setTimeout(()=> countdownEl.textContent = "", 600);
+      // Note: this is only a local visual countdown.
+      // the server will start the authoritative match when it has MAX_PLAYERS connected.
+      // we still allow sending presses in the meantime; the server will only count them when playing.
+    }
+  }, 1000);
+});
+
+// Send SPACE press on keydown (send always; server will accept only during playing)
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space") return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    log("Not connected — join the lobby first");
+    return;
+  }
+  // send press message always; server will validate and only count in PLAYING
+  ws.send(JSON.stringify({ type: "press", key: "SPACE" }));
+});
+
+// convenience: click button to send press too
+document.addEventListener("click", (ev) => {
+  // click on body sends a press if CTRl+click (just example), not needed
+});
+
+// initial render
+renderEmptySlots();
+</script>
+</body>
+</html>
