@@ -19,7 +19,7 @@ const MP = {
 // DOM references
 let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
-    raceOverlay, lobbySection;
+    raceOverlay, lobbySection, resultsWrap, finalList;
 // Config captured from URL or defaults
 MP.serverUrl = 'ws://localhost:8080';
 
@@ -38,6 +38,8 @@ window.addEventListener('DOMContentLoaded', () => {
   renameInput = document.getElementById('renameInput');
   renameBtn = document.getElementById('renameBtn');
   raceOverlay = document.getElementById('raceOverlay');
+  resultsWrap = document.getElementById('resultsWrap');
+  finalList = document.getElementById('final-list');
 
   // URL parameters
   const params = new URLSearchParams(window.location.search);
@@ -59,6 +61,10 @@ window.addEventListener('DOMContentLoaded', () => {
   if (roomParam && nameParam) {
     connectMP();
   }
+
+  // Keyboard boost listeners
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
 });
 
 function connectMP() {
@@ -102,6 +108,7 @@ function handleMessage(msg) {
       if (MP.phase === 'lobby') {
         raceOverlay.style.display = 'none';
         if (lobbySection) lobbySection.style.display = 'block';
+        if (resultsWrap) resultsWrap.style.display = 'none';
       }
       break;
     case 'countdown':
@@ -127,10 +134,36 @@ function handleMessage(msg) {
       break;
     case 'raceEnd':
       MP.phase = 'results'; raceOverlay.style.display = 'flex';
+      // Populate Final Leaderboard in sidebar
+      if (resultsWrap && finalList) {
+        resultsWrap.style.display = 'block';
+        finalList.innerHTML = '';
+        const items = (msg.results && msg.results.results) ? msg.results.results.slice() : [];
+        items.sort((a,b)=>a.finishSeconds - b.finishSeconds);
+        const winnerTime = items.length ? items[0].finishSeconds : null;
+        items.forEach((r, idx) => {
+          const li = document.createElement('li');
+          const delta = (winnerTime != null && r.finishSeconds != null) ? (r.finishSeconds - winnerTime) : null;
+          const deltaStr = delta == null ? '' : (delta === 0 ? ' +0.00s' : ` +${delta.toFixed(2)}s`);
+          const timeStr = r.finishSeconds != null ? `${r.finishSeconds.toFixed(2)}s` : '';
+          const botTag = r.isBot ? ' [Bot]' : '';
+          const name = (r.username || (r.isBot ? `Bot_${(r.lane ?? 0)+1}` : `#${r.id}`)) + botTag;
+          // Top 3 markers
+          const podium = idx === 0 ? '🏆' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '•';
+          li.textContent = `${podium} ${idx+1}. ${name} — ${timeStr}${deltaStr}`;
+          finalList.appendChild(li);
+        });
+      }
       if (lobbySection) lobbySection.style.display = 'block';
       break;
     case 'boost':
-      // ignore for lobby UI
+      // show notification on boost press/release
+      if (msg.down && msg.accepted) {
+        showBoostNotice('Speed Up!');
+      } else if (msg.down && msg.accepted === false) {
+        const remain = typeof msg.cooldownMsRemaining === 'number' ? Math.max(0, Math.round(msg.cooldownMsRemaining/100)/10) : null;
+        showBoostNotice(remain != null ? `Cooldown ${remain}s…` : 'Cooldown…');
+      }
       break;
   }
 }
@@ -410,4 +443,45 @@ function draw() {
     fill(255); textAlign(CENTER, CENTER); textSize(22);
     text('Race complete', width/2, height - 40);
   }
+  // Draw boost notification if active
+  if (_boostNotice && (millis() - _boostNotice.ts) < _boostNotice.durationMs) {
+    const alpha = 255 * (1 - (millis() - _boostNotice.ts) / _boostNotice.durationMs);
+    fill(0, 0, 0, 120);
+    noStroke();
+    rectMode(CENTER);
+    rect(width/2, 40, 220, 30, 8);
+    fill(255, alpha);
+    textAlign(CENTER, CENTER);
+    textSize(16);
+    text(_boostNotice.text, width/2, 40);
+  }
+}
+
+// --- Boost Controls & Notification ---
+const INPUT_KEY = (MP && MP.constants && MP.constants.INPUT_KEY) ? MP.constants.INPUT_KEY : 'E';
+let _boostDown = false;
+let _boostNotice = null; // { text, ts, durationMs }
+
+function onKeyDown(e) {
+  if (MP.phase !== 'race' || !MP.ws) return;
+  if (e.key.toUpperCase() === INPUT_KEY && !_boostDown) {
+    _boostDown = true;
+    MP.ws.send(JSON.stringify({ type: 'pressBoost', down: true, atClientMs: Date.now() }));
+  }
+}
+
+function onKeyUp(e) {
+  if (!MP.ws) return;
+  if (e.key.toUpperCase() === INPUT_KEY && _boostDown) {
+    _boostDown = false;
+    MP.ws.send(JSON.stringify({ type: 'pressBoost', down: false, atClientMs: Date.now() }));
+  }
+}
+
+function showBoostNotice(text) {
+  const defaultDur = 900;
+  const tunedDur = (MP && MP.constants && typeof MP.constants.BOOST_COOLDOWN_MS === 'number')
+    ? Math.min(Math.max(400, MP.constants.BOOST_COOLDOWN_MS), 2000)
+    : defaultDur;
+  _boostNotice = { text, ts: millis(), durationMs: tunedDur };
 }

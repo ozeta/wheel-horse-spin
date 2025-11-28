@@ -23,12 +23,12 @@ const INPUT_KEY = 'E';
 const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 10;
-const COUNTDOWN_SECONDS = 5;
+const COUNTDOWN_SECONDS = 3;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
-const TICK_RATE_HZ = 30;
+const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 1.4;
-const BOOST_MAX_DURATION_MS = 500;
-const BOOST_COOLDOWN_MS = 1000;
+const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
+const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 100);
 
 // Base motion constants (should match client)
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
@@ -161,14 +161,7 @@ function endRace(room, results) {
   console.log(`[room:${room.id}] race end (raceId=${room.raceId}) winner=${winnerId}`);
   broadcast(room, { type: 'raceEnd', results });
   stopTick(room);
-  // return to lobby shortly
-  setTimeout(() => {
-    room.phase = 'lobby';
-    room.readySet.clear();
-    room.countdownEndsAt = null;
-    room.raceStartEpochMs = null;
-    broadcast(room, roomStatePayload(room));
-  }, 4000);
+  // Do not auto-reset; wait for host to exit or explicit command
 }
 
 function beginTick(room) {
@@ -305,7 +298,8 @@ wss.on('connection', (ws, req) => {
     if (room && player) {
       console.log(`[room:${room.id}] disconnect clientId=${player.id} username=${player.username}`);
       room.players.delete(player.id);
-      if (room.hostId === player.id) {
+      const wasHost = room.hostId === player.id;
+      if (wasHost) {
         const first = room.players.values().next().value;
         room.hostId = first ? first.id : null;
       }
@@ -313,6 +307,15 @@ wss.on('connection', (ws, req) => {
       broadcast(room, roomStatePayload(room));
       // Dynamic end: if no players remain, end game and return to lobby
       if (room.players.size === 0) {
+        stopTick(room);
+        room.phase = 'lobby';
+        room.readySet.clear();
+        room.countdownEndsAt = null;
+        room.raceStartEpochMs = null;
+        broadcast(room, roomStatePayload(room));
+      }
+      // If in results phase, wait until host exits before resetting to lobby
+      else if (room.phase === 'results' && wasHost) {
         stopTick(room);
         room.phase = 'lobby';
         room.readySet.clear();
