@@ -53,6 +53,7 @@ function createRoom(roomId) {
     seeds: {},
     constants: { INPUT_KEY, DEFAULT_PLAYERS, MAX_PLAYERS, TOTAL_LANES, COUNTDOWN_SECONDS, BOOST_FACTOR, BOOST_MAX_DURATION_MS, BOOST_COOLDOWN_MS },
     tickTimer: null,
+    lastUpdateMs: null,
   };
   rooms.set(roomId, room);
   return room;
@@ -98,6 +99,8 @@ function startCountdown(room) {
   room.countdownEndsAt = nowMs() + COUNTDOWN_SECONDS * 1000;
   console.log(`[room:${room.id}] countdown started for ${COUNTDOWN_SECONDS}s (players=${room.players.size})`);
   broadcast(room, { type: 'countdown', secondsLeft: COUNTDOWN_SECONDS, countdownEndsAt: room.countdownEndsAt });
+  // Begin ticking so clients can render decreasing countdown time
+  beginTick(room);
 }
 
 function startRace(room) {
@@ -108,6 +111,22 @@ function startRace(room) {
   room.seeds = {};
   room.players.forEach(p => { room.seeds[p.id] = Math.floor(Math.random()*1e9); });
   allocateLanes(room);
+  // initialize runtime race state for players & bots
+  room.players.forEach(p => {
+    p.progress = 0; // 0..1 lap completion
+    p.finished = false;
+    p.finishSeconds = null;
+    p.boostDown = false;
+    p.boostSinceMs = null;
+    p.lastBoostStartMs = null;
+    p.lastBoostEndMs = null; // cooldown reference
+  });
+  room.bots.forEach(b => {
+    b.progress = 0;
+    b.finished = false;
+    b.finishSeconds = null;
+  });
+  room.lastUpdateMs = room.raceStartEpochMs;
   console.log(`[room:${room.id}] race start (raceId=${room.raceId}, players=${room.players.size}, bots=${room.bots.length})`);
   broadcast(room, {
     type: 'raceStart',
@@ -155,7 +174,16 @@ function beginTick(room) {
   stopTick(room);
   const interval = Math.round(1000 / TICK_RATE_HZ);
   room.tickTimer = setInterval(() => {
-    broadcast(room, { type: 'tick', tServerMs: nowMs() });
+    if (room.phase === 'race') {
+      updateRace(room);
+    }
+    // Tick payload includes server time + progress snapshot during race
+    let payload = { type: 'tick', tServerMs: nowMs() };
+    if (room.phase === 'race') {
+      payload.players = Array.from(room.players.values()).map(p=>({ id: p.id, lane: p.lane, progress: p.progress, finished: p.finished }));
+      payload.bots = room.bots.map(b=>({ lane: b.lane, progress: b.progress, finished: b.finished }));
+    }
+    broadcast(room, payload);
   }, interval);
 }
 function stopTick(room) {
@@ -189,9 +217,12 @@ wss.on('connection', (ws, req) => {
       broadcast(room, roomStatePayload(room));
       // Auto-start policy: if room was empty and now we have enough players, start a new game
       const playerCount = room.players.size;
-      if (room.phase === 'lobby' && playerCount >= 1) {
+      if (room.phase === 'lobby' && playerCount >= 2) {
+        console.log(`[room:${room.id}] auto-start threshold met (players=${playerCount}) -> countdown`);
         startCountdown(room);
         setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
+      } else if (room.phase === 'lobby') {
+        console.log(`[room:${room.id}] waiting in lobby (players=${playerCount}, need >=2 for auto-start)`);
       }
       return;
     }
@@ -220,8 +251,30 @@ wss.on('connection', (ws, req) => {
         break;
       }
       case 'pressBoost': {
-        // Relay to clients; server could validate rate/cooldown in future
-        broadcast(room, { type: 'boost', playerId: player.id, down: !!msg.down, atClientMs: msg.atClientMs || nowMs() });
+        // Boost with cooldown + max duration enforcement
+        if (room.phase === 'race') {
+          const now = nowMs();
+          if (msg.down) {
+            // Attempt to start boost
+            const canStart = (!player.lastBoostEndMs) || (now - player.lastBoostEndMs >= BOOST_COOLDOWN_MS);
+            if (canStart && !player.boostDown) {
+              player.boostDown = true;
+              player.boostSinceMs = now;
+              player.lastBoostStartMs = now;
+              broadcast(room, { type: 'boost', playerId: player.id, down: true, atClientMs: msg.atClientMs || now, accepted: true });
+            } else {
+              // Denied (cooldown)
+              broadcast(room, { type: 'boost', playerId: player.id, down: true, atClientMs: msg.atClientMs || now, accepted: false, cooldownMsRemaining: player.lastBoostEndMs ? (BOOST_COOLDOWN_MS - (now - player.lastBoostEndMs)) : null });
+            }
+          } else {
+            // End boost early if key released
+            if (player.boostDown) {
+              player.boostDown = false;
+              player.lastBoostEndMs = now;
+              broadcast(room, { type: 'boost', playerId: player.id, down: false, atClientMs: msg.atClientMs || now, accepted: true });
+            }
+          }
+        }
         break;
       }
       case 'returnToLobby': {
@@ -229,6 +282,17 @@ wss.on('connection', (ws, req) => {
         if (room.players.size >= 2) {
           room.phase = 'lobby';
           stopTick(room);
+          broadcast(room, roomStatePayload(room));
+        }
+        break;
+      }
+      case 'rename': {
+        if (room.phase === 'race') break; // prevent mid-race rename for simplicity
+        const newName = (msg.username && String(msg.username).trim()) || '';
+        if (newName && newName.length <= 40) {
+          const oldName = player.username;
+          player.username = newName;
+          console.log(`[room:${room.id}] rename clientId=${player.id} '${oldName}' -> '${newName}'`);
           broadcast(room, roomStatePayload(room));
         }
         break;
@@ -258,6 +322,70 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// --- Race Simulation Logic ---
+function updateRace(room) {
+  if (room.phase !== 'race') return;
+  const now = nowMs();
+  const dtMs = room.lastUpdateMs ? (now - room.lastUpdateMs) : 0;
+  room.lastUpdateMs = now;
+  const dtSec = dtMs / 1000;
+  const baseSpeed = 1 / MAX_EXECUTION_TIME; // progress per second
+
+  // helper jitter using Math.random; seeds can be used later for deterministic PRNG
+  function speedWithJitter(boostActive) {
+    const jitter = (Math.random() - 0.5) * 0.1; // ±5%
+    let speed = baseSpeed * (1 + jitter);
+    if (boostActive) speed *= BOOST_FACTOR;
+    return speed;
+  }
+
+  // Update players
+  room.players.forEach(p => {
+    if (p.finished) return;
+    const boostActive = p.boostDown && p.boostSinceMs && (now - p.boostSinceMs) <= BOOST_MAX_DURATION_MS;
+    // Auto-end boost if duration exceeded
+    if (p.boostDown && !boostActive) {
+      p.boostDown = false;
+      p.lastBoostEndMs = now;
+      broadcast(room, { type: 'boost', playerId: p.id, down: false, atClientMs: now, accepted: true, reason: 'auto-expire' });
+    }
+    const speed = speedWithJitter(boostActive);
+    p.progress += speed * dtSec;
+    if (p.progress >= 1 && !p.finished) {
+      p.finished = true;
+      p.finishSeconds = (now - room.raceStartEpochMs) / 1000;
+    }
+  });
+
+  // Update bots
+  room.bots.forEach(b => {
+    if (b.finished) return;
+    const boostChance = Math.random() < 0.02; // occasional mini boost start
+    const botBoost = boostChance && (Math.random() < 0.5);
+    const speed = speedWithJitter(botBoost);
+    b.progress += speed * dtSec;
+    if (b.progress >= 1 && !b.finished) {
+      b.finished = true;
+      b.finishSeconds = (now - room.raceStartEpochMs) / 1000;
+    }
+  });
+
+  // Completion check
+  const allPlayersFinished = Array.from(room.players.values()).every(p => p.finished);
+  const allBotsFinished = room.bots.every(b => b.finished);
+  if (allPlayersFinished && allBotsFinished) {
+    // Compile results
+    const results = [];
+    room.players.forEach(p => results.push({ id: p.id, username: p.username, lane: p.lane, finishSeconds: p.finishSeconds, isBot: false }));
+    room.bots.forEach(b => results.push({ id: `bot:${b.lane}`, username: b.username, lane: b.lane, finishSeconds: b.finishSeconds, isBot: true }));
+    results.sort((a,b)=>a.finishSeconds - b.finishSeconds);
+    const winnerId = results[0] ? results[0].id : null;
+    const winnerTime = results[0] ? results[0].finishSeconds : null;
+    results.forEach(r => { r.deltaSeconds = winnerTime != null ? +(r.finishSeconds - winnerTime).toFixed(3) : null; });
+    endRace(room, { winnerId, results });
+  }
+}
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {

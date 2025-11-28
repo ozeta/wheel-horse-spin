@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wheel Horse Spin Multiplayer</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { display:flex; flex-direction:column; font-family:Arial,sans-serif; }
+    header { padding:10px 16px; background:#222; color:#fff; }
+    main { display:flex; flex:1; }
+    #lobby { width:340px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; }
+    #lobby h2 { margin:0 0 10px; font-size:20px; }
+    #player-list { list-style:none; padding:0; margin:0; }
+    #player-list li { padding:6px 8px; border:1px solid #ccc; border-radius:6px; margin-bottom:6px; background:#fff; font-size:13px; }
+    #status { font-size:12px; margin-top:6px; color:#333; }
+    #countdownDisplay { font-size:22px; font-weight:bold; margin:10px 0; }
+    #raceCanvasWrap { flex:1; position:relative; }
+    #renameWrap { display:flex; gap:6px; margin-top:6px; }
+    #renameWrap input { flex:1; padding:4px; }
+    button { cursor:pointer; }
+    #raceOverlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); color:#fff; font-size:46px; font-weight:bold; }
+  </style>
+</head>
+<body>
+  <header><h1>Wheel Horse Spin Multiplayer</h1></header>
+  <main>
+    <section id="lobby">
+      <h2>Lobby</h2>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <input id="serverUrl" placeholder="ws://localhost:8080" />
+        <input id="roomName" placeholder="room (default dev)" />
+        <input id="username" placeholder="username" />
+        <button id="connectBtn">Connect</button>
+        <button id="readyBtn" disabled>Ready</button>
+        <button id="startBtn" style="display:none;" disabled>Start Game (Host)</button>
+        <div id="countdownDisplay" style="display:none;"></div>
+        <div id="status">Not connected.</div>
+        <ul id="player-list"></ul>
+        <div id="renameWrap" style="display:none;">
+          <input id="renameInput" placeholder="new name" />
+          <button id="renameBtn">Rename</button>
+        </div>
+      </div>
+    </section>
+    <section id="raceCanvasWrap">
+      <div id="raceOverlay">Race Finished</div>
+      <div id="canvas-container"></div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.js"></script>
+  <script src="mp-game.js"></script>
+</body>
+</html>
