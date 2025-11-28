@@ -33,7 +33,7 @@ node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=
 node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=true debug=true
 ```
 
- 
+
 ## Protocol (summary)
 
 - Client → Server
@@ -50,7 +50,7 @@ node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=
   - `tick { tServerMs }`
   - `raceEnd { results[] }`
 
- 
+
 ## Notes
 
 - Bots fill to 10 lanes; human max 6.

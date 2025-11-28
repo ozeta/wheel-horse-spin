@@ -96,6 +96,7 @@ function roomStatePayload(room) {
 function startCountdown(room) {
   room.phase = 'countdown';
   room.countdownEndsAt = nowMs() + COUNTDOWN_SECONDS * 1000;
+  console.log(`[room:${room.id}] countdown started for ${COUNTDOWN_SECONDS}s (players=${room.players.size})`);
   broadcast(room, { type: 'countdown', secondsLeft: COUNTDOWN_SECONDS, countdownEndsAt: room.countdownEndsAt });
 }
 
@@ -107,6 +108,7 @@ function startRace(room) {
   room.seeds = {};
   room.players.forEach(p => { room.seeds[p.id] = Math.floor(Math.random()*1e9); });
   allocateLanes(room);
+  console.log(`[room:${room.id}] race start (raceId=${room.raceId}, players=${room.players.size}, bots=${room.bots.length})`);
   broadcast(room, {
     type: 'raceStart',
     roomId: room.id,
@@ -122,6 +124,21 @@ function startRace(room) {
 
 function endRace(room, results) {
   room.phase = 'results';
+  // Try to derive winner id from results if present
+  let winnerId = null;
+  try {
+    if (Array.isArray(results)) {
+      const sorted = [...results].sort((a,b)=>{
+        const ta = (a && (a.finishSeconds ?? a.time ?? a.t)) || Infinity;
+        const tb = (b && (b.finishSeconds ?? b.time ?? b.t)) || Infinity;
+        return ta - tb;
+      });
+      winnerId = sorted[0] && (sorted[0].id ?? sorted[0].playerId ?? sorted[0].lane ?? null);
+    } else if (results && typeof results === 'object') {
+      winnerId = results.winnerId ?? results.winner ?? null;
+    }
+  } catch {}
+  console.log(`[room:${room.id}] race end (raceId=${room.raceId}) winner=${winnerId}`);
   broadcast(room, { type: 'raceEnd', results });
   stopTick(room);
   // return to lobby shortly
@@ -167,6 +184,7 @@ wss.on('connection', (ws, req) => {
       room.players.set(clientId, player);
       if (!room.hostId) room.hostId = clientId;
       allocateLanes(room);
+      console.log(`[room:${room.id}] connect clientId=${clientId} username=${username} (hostId=${room.hostId})`);
       ws.send(JSON.stringify({ type: 'welcome', clientId, roomId: room.id, hostId: room.hostId }));
       broadcast(room, roomStatePayload(room));
       // Auto-start policy: if room was empty and now we have enough players, start a new game
@@ -220,6 +238,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     if (room && player) {
+      console.log(`[room:${room.id}] disconnect clientId=${player.id} username=${player.username}`);
       room.players.delete(player.id);
       if (room.hostId === player.id) {
         const first = room.players.values().next().value;
