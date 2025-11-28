@@ -16,7 +16,7 @@
 //
 // Debug mode:
 //    Add `debug=true` to pause after each server message
-//    node thin-client.js ws://localhost:8080 roomId=dev username=Alice debug=true
+//    node thin-client.js ws://localhost:8080 roomId=dev username=Alice debug=true pretty-output=true
 
 const WebSocket = require('ws');
 

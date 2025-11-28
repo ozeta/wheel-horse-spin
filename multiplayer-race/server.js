@@ -169,6 +169,12 @@ wss.on('connection', (ws, req) => {
       allocateLanes(room);
       ws.send(JSON.stringify({ type: 'welcome', clientId, roomId: room.id, hostId: room.hostId }));
       broadcast(room, roomStatePayload(room));
+      // Auto-start policy: if room was empty and now we have enough players, start a new game
+      const playerCount = room.players.size;
+      if (room.phase === 'lobby' && playerCount >= 1) {
+        startCountdown(room);
+        setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
+      }
       return;
     }
     if (!room || !player) return;
@@ -189,7 +195,7 @@ wss.on('connection', (ws, req) => {
       case 'startGame': {
         if (room.hostId !== player.id) break;
         const playerCount = room.players.size;
-        if (playerCount >= Math.max(DEFAULT_PLAYERS, 2) && room.phase === 'lobby') {
+        if (playerCount >= 1 && room.phase === 'lobby') {
           startCountdown(room);
           setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
         }
@@ -221,6 +227,15 @@ wss.on('connection', (ws, req) => {
       }
       allocateLanes(room);
       broadcast(room, roomStatePayload(room));
+      // Dynamic end: if no players remain, end game and return to lobby
+      if (room.players.size === 0) {
+        stopTick(room);
+        room.phase = 'lobby';
+        room.readySet.clear();
+        room.countdownEndsAt = null;
+        room.raceStartEpochMs = null;
+        broadcast(room, roomStatePayload(room));
+      }
     }
   });
 });
