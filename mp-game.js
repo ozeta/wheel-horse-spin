@@ -49,7 +49,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (displayServer) displayServer.textContent = `Server: ${MP.serverUrl}`;
   if (displayRoom) displayRoom.textContent = `Room: ${MP.room}`;
 
-  connectBtn.addEventListener('click', connectMP);
+  if (connectBtn) connectBtn.addEventListener('click', connectMP);
   readyBtn.addEventListener('click', toggleReady);
   startBtn.addEventListener('click', startGame); // host only
   renameBtn.addEventListener('click', doRename);
