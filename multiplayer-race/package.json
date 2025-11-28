@@ -1,0 +1,17 @@
+{
+  "name": "wheel-horse-spin-multiplayer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "WebSocket server for Wheel Horse Spin multiplayer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "client": "node thin-client.js ws://localhost:8080 roomId=dev username=Tester",
+    "clients:pretty": "node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=true && node thin-client.js ws://localhost:8080 roomId=dev username=Bob pretty-output=true"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
