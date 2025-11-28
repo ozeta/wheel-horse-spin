@@ -28,13 +28,13 @@
     <section id="lobby">
       <h2>Lobby</h2>
       <div style="display:flex; flex-direction:column; gap:6px;">
-        <input id="serverUrl" placeholder="ws://localhost:8080" />
-        <input id="roomName" placeholder="room (default dev)" />
+        <div id="displayServer" style="background:#ececec; padding:4px 6px; border-radius:6px; font-size:12px; font-weight:bold;">Server: ws://localhost:8080</div>
+        <div id="displayRoom" style="background:#ececec; padding:4px 6px; border-radius:6px; font-size:12px; font-weight:bold;">Room: dev</div>
         <input id="username" placeholder="username" />
         <button id="connectBtn">Connect</button>
-        <button id="readyBtn" disabled>Ready</button>
+        <button id="readyBtn" disabled>Ready to Start</button>
         <button id="startBtn" style="display:none;" disabled>Start Game (Host)</button>
-        <div id="countdownDisplay" style="display:none;"></div>
+        <div id="countdownHeader" style="display:none; background:#0a7020; color:#fff; padding:6px 10px; border-radius:6px; font-weight:bold;">Countdown: --</div>
         <div id="status">Not connected.</div>
         <ul id="player-list"></ul>
         <div id="renameWrap" style="display:none;">
