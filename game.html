@@ -16,6 +16,9 @@
     #status { font-size:12px; margin-top:6px; color:#333; }
     #countdownDisplay { font-size:22px; font-weight:bold; margin:10px 0; }
     #raceCanvasWrap { flex:1; position:relative; }
+    #canvas-container { position:absolute; inset:0; }
+    /* Ensure some minimum height so canvas is visible even if content is sparse */
+    #raceCanvasWrap { min-height: 420px; }
     #renameWrap { display:flex; gap:6px; margin-top:6px; }
     #renameWrap input { flex:1; padding:4px; }
     button { cursor:pointer; }
@@ -30,7 +33,6 @@
       <div style="display:flex; flex-direction:column; gap:6px;">
         <div id="displayServer" style="background:#ececec; padding:4px 6px; border-radius:6px; font-size:12px; font-weight:bold;">Server: ws://localhost:8080</div>
         <div id="displayRoom" style="background:#ececec; padding:4px 6px; border-radius:6px; font-size:12px; font-weight:bold;">Room: dev</div>
-        <input id="username" placeholder="username" />
         <button id="connectBtn">Connect</button>
         <button id="readyBtn" disabled>Ready to Start</button>
         <button id="startBtn" style="display:none;" disabled>Start Game (Host)</button>

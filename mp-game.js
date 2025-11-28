@@ -16,15 +16,16 @@ const MP = {
 };
 
 // DOM references
-let serverUrlInput, roomNameInput, usernameInput, connectBtn, readyBtn, startBtn,
+let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
     raceOverlay;
+// Config captured from URL or defaults
+MP.serverUrl = 'ws://localhost:8080';
 
 // --- Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
-  serverUrlInput = document.getElementById('serverUrl');
-  roomNameInput = document.getElementById('roomName');
-  usernameInput = document.getElementById('username');
+  displayServer = document.getElementById('displayServer');
+  displayRoom = document.getElementById('displayRoom');
   connectBtn = document.getElementById('connectBtn');
   readyBtn = document.getElementById('readyBtn');
   startBtn = document.getElementById('startBtn');
@@ -40,8 +41,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const roomParam = params.get('room');
   const nameParam = params.get('name');
-  roomNameInput.value = roomParam || 'dev';
-  usernameInput.value = nameParam || 'Browser';
+  const serverParam = params.get('server');
+  MP.room = (roomParam && roomParam.trim()) || 'dev';
+  MP.username = (nameParam && nameParam.trim()) || 'Browser';
+  MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
+  if (displayServer) displayServer.textContent = `Server: ${MP.serverUrl}`;
+  if (displayRoom) displayRoom.textContent = `Room: ${MP.room}`;
 
   connectBtn.addEventListener('click', connectMP);
   readyBtn.addEventListener('click', toggleReady);
@@ -56,10 +61,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function connectMP() {
   if (MP.connected) return;
-  const url = (serverUrlInput.value || 'ws://localhost:8080').trim();
-  MP.room = (roomNameInput.value || 'dev').trim();
-  MP.username = (usernameInput.value || 'Browser').trim();
-  MP.ws = new WebSocket(url);
+  // Username already taken from URL param or kept after rename
+  MP.ws = new WebSocket(MP.serverUrl);
   statusDiv.textContent = 'Connecting...';
   MP.ws.onopen = () => {
     MP.ws.send(JSON.stringify({ type: 'hello', roomId: MP.room, username: MP.username, version: 1 }));
@@ -91,6 +94,7 @@ function handleMessage(msg) {
       MP.players = (msg.players || []).map(p => ({ id: p.id, username: p.username, ready: p.ready, lane: p.lane }));
       renderPlayers();
       updateButtons();
+      buildTrackObjectsFromPlayers();
       countdownHeader.style.display = 'none';
       if (MP.phase === 'lobby') {
         raceOverlay.style.display = 'none';
@@ -103,11 +107,15 @@ function handleMessage(msg) {
       break;
     case 'raceStart':
       MP.phase = 'race'; countdownHeader.style.display = 'none'; raceOverlay.style.display = 'none';
+      buildTrackObjectsFromPlayers(); // ensure roster locked for race
       break;
     case 'tick':
       if (MP.phase === 'countdown' && MP.countdownEndsAt) {
         const remaining = Math.max(0, Math.round((MP.countdownEndsAt - Date.now()) / 1000));
         countdownHeader.textContent = `Countdown: ${remaining}s`;
+      }
+      if (MP.phase === 'race' && msg.players) {
+        syncRaceProgress(msg.players);
       }
       break;
     case 'raceEnd':
@@ -138,8 +146,9 @@ function renderPlayers() {
   MP.players.forEach(p => {
     const li = document.createElement('li');
     const hostMark = p.id === MP.hostId ? ' (host)' : '';
-    const readyMark = p.ready ? ' [R]' : '';
-    li.textContent = `#${p.id} ${p.username}${hostMark}${readyMark}`;
+    const readyMark = p.ready ? ' [Ready]' : '';
+    const youMark = p.id === MP.clientId ? ' (You)' : '';
+    li.textContent = `#${p.id} ${p.username}${youMark}${hostMark}${readyMark}`;
     playerListUL.appendChild(li);
   });
   statusDiv.textContent = `Players: ${MP.players.length}`;
@@ -165,30 +174,208 @@ function doRename() {
   const newName = renameInput.value.trim();
   if (newName && newName.length <= 40) {
     MP.ws.send(JSON.stringify({ type: 'rename', username: newName }));
-    usernameInput.value = newName; // reflect change locally
+    MP.username = newName; // keep local copy
   }
 }
 
 // --- (Optional) Race Rendering Placeholder ---
 // We could reuse full track rendering later; for now a minimal p5 canvas with phase label.
-let phaseLabel = '';
+// --- Track Rendering (adapted from single-player sketch) ---
+let trackGeometry = {};
+const LANE_WIDTH = 70; // match main sketch
+const AVATAR_SIZE_FACTOR = 0.8;
+const FINISH_LINE_WIDTH = 100;
+let trackObjects = []; // { id, username, lane, progress, remoteProgress, totalDistance, img }
+let avatarStyle = 'open-peeps';
+
 function setup() {
   const canvasContainer = document.getElementById('canvas-container');
+  if (!canvasContainer) return;
   const rect = canvasContainer.getBoundingClientRect();
   const c = createCanvas(rect.width, rect.height);
   c.parent(canvasContainer);
+  frameRate(60);
+  buildTrackObjectsFromPlayers(); // initial (may be empty)
 }
+
 function windowResized() {
   const canvasContainer = document.getElementById('canvas-container');
+  if (!canvasContainer) return;
   const rect = canvasContainer.getBoundingClientRect();
   resizeCanvas(rect.width, rect.height);
+  calculateTrackGeometry();
 }
+
+function calculateTrackGeometry() {
+  const numLanes = trackObjects.length > 0 ? trackObjects.length : Math.max(MP.players.length, 1);
+  const margin = 40;
+  const laneWidth = LANE_WIDTH;
+  const outerRectWidth = width - 2 * margin;
+  const outerRectHeight = height - 2 * margin;
+  const arcDiameter = outerRectHeight;
+  const arcRadius = arcDiameter / 2;
+  const straightLength = Math.max(0, outerRectWidth - arcDiameter);
+  trackGeometry = {
+    margin,
+    laneWidth,
+    numLanes,
+    arcRadius,
+    straightLength,
+    leftArcCenter: { x: margin + arcRadius, y: height / 2 },
+    rightArcCenter: { x: margin + arcRadius + straightLength, y: height / 2 },
+  };
+  // Update totalDistance for each trackObject when geometry changes
+  trackObjects.forEach(obj => {
+    const laneRadius = arcRadius - (obj.lane * laneWidth) - (laneWidth / 2);
+    obj.totalDistance = (2 * straightLength) + (TWO_PI * laneRadius);
+  });
+}
+
+function drawTrack() {
+  const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
+  if (!arcRadius) return;
+  const evenLaneColor = color(210, 180, 140);
+  const oddLaneColor = color(200, 170, 130);
+  noFill();
+  strokeWeight(laneWidth);
+  for (let i = 0; i < numLanes; i++) {
+    const laneRadius = arcRadius - (i * laneWidth) - (laneWidth / 2);
+    if (laneRadius <= 0) continue;
+    stroke(i % 2 === 0 ? evenLaneColor : oddLaneColor);
+    arc(leftArcCenter.x, leftArcCenter.y, laneRadius * 2, laneRadius * 2, HALF_PI, PI + HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, laneRadius * 2, laneRadius * 2, PI + HALF_PI, HALF_PI);
+    line(leftArcCenter.x, leftArcCenter.y - laneRadius, rightArcCenter.x, rightArcCenter.y - laneRadius);
+    line(rightArcCenter.x, rightArcCenter.y + laneRadius, leftArcCenter.x, leftArcCenter.y + laneRadius);
+  }
+  // Divider lines
+  stroke(255, 150); strokeWeight(2); noFill();
+  for (let i = 1; i < numLanes; i++) {
+    const dividerRadius = arcRadius - i * laneWidth;
+    if (dividerRadius <= 0) continue;
+    arc(leftArcCenter.x, leftArcCenter.y, dividerRadius * 2, dividerRadius * 2, HALF_PI, PI + HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, dividerRadius * 2, dividerRadius * 2, PI + HALF_PI, HALF_PI);
+    line(leftArcCenter.x, leftArcCenter.y - dividerRadius, rightArcCenter.x, rightArcCenter.y - dividerRadius);
+    line(rightArcCenter.x, rightArcCenter.y + dividerRadius, leftArcCenter.x, leftArcCenter.y + dividerRadius);
+  }
+  // Finish line chessboard
+  const finishLineX = leftArcCenter.x;
+  const finishLineYStart = leftArcCenter.y - arcRadius;
+  const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
+  const rectW = FINISH_LINE_WIDTH;
+  const rectH = finishLineYEnd - finishLineYStart;
+  noStroke(); rectMode(CORNERS);
+  const tiles = 8; const tileW = rectW / tiles; const tileH = rectH / tiles;
+  for (let row = 0; row < tiles; row++) {
+    for (let col = 0; col < tiles; col++) {
+      let isDark = (row + col) % 2 === 1;
+      fill(isDark ? color(181, 136, 99) : color(240, 217, 181));
+      rect(
+        finishLineX + col * tileW,
+        finishLineYStart + row * tileH,
+        finishLineX + (col + 1) * tileW,
+        finishLineYStart + (row + 1) * tileH
+      );
+    }
+  }
+}
+
+function getTrackPosition(obj) {
+  const { laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
+  if (!arcRadius) return { x: width / 2, y: height / 2 };
+  const laneRadius = arcRadius - (obj.lane * laneWidth) - (laneWidth / 2);
+  const topStraightEnd = straightLength;
+  const rightArcEnd = topStraightEnd + PI * laneRadius;
+  const bottomStraightEnd = rightArcEnd + straightLength;
+  const totalLapDistance = bottomStraightEnd + PI * laneRadius;
+  let progress = (obj.progress || 0) % totalLapDistance;
+  let x, y;
+  if (progress < topStraightEnd) {
+    x = leftArcCenter.x + progress;
+    y = leftArcCenter.y - laneRadius;
+  } else if (progress < rightArcEnd) {
+    const angle = map(progress, topStraightEnd, rightArcEnd, -HALF_PI, HALF_PI);
+    x = rightArcCenter.x + cos(angle) * laneRadius;
+    y = rightArcCenter.y + sin(angle) * laneRadius;
+  } else if (progress < bottomStraightEnd) {
+    x = rightArcCenter.x - (progress - rightArcEnd);
+    y = rightArcCenter.y + laneRadius;
+  } else {
+    const angle = map(progress, bottomStraightEnd, totalLapDistance, HALF_PI, PI + HALF_PI);
+    x = leftArcCenter.x + cos(angle) * laneRadius;
+    y = leftArcCenter.y + sin(angle) * laneRadius;
+  }
+  return { x, y };
+}
+
+function drawTrackObjects() {
+  const avatarSize = (trackGeometry.laneWidth || LANE_WIDTH) * AVATAR_SIZE_FACTOR;
+  imageMode(CENTER);
+  trackObjects.forEach(obj => {
+    if (!obj.img || !obj.img.width) return;
+    const pos = getTrackPosition(obj);
+    image(obj.img, pos.x, pos.y, avatarSize, avatarSize);
+    const tx = pos.x + avatarSize / 2 + 5;
+    const ty = pos.y;
+    // Bold black fill
+    fill(0); noStroke(); textSize(16); textStyle(BOLD); textAlign(LEFT, CENTER);
+    // White outline using canvas strokeText for better readability
+    push();
+    const ctx = drawingContext;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    // Use same font settings as p5
+    // p5 sets its own font internally; strokeText will use current context font
+    ctx.strokeText(obj.username, tx, ty);
+    ctx.restore();
+    pop();
+    // Filled text on top
+    text(obj.username, tx, ty);
+  });
+}
+
+function buildTrackObjectsFromPlayers() {
+  // Build / refresh trackObjects from MP.players (ignore bots for lobby render)
+  trackObjects = (MP.players || []).slice().sort((a,b)=>a.lane - b.lane).map(p => {
+    const avatarUrl = `https://api.dicebear.com/8.x/${avatarStyle}/svg?seed=${encodeURIComponent(p.username)}`;
+    const img = loadImage(avatarUrl);
+    return {
+      id: p.id,
+      username: p.username,
+      lane: p.lane,
+      progress: 0,
+      remoteProgress: 0,
+      totalDistance: 0,
+      img,
+      finished: false,
+    };
+  });
+  calculateTrackGeometry();
+}
+
+function syncRaceProgress(playersProgress) {
+  playersProgress.forEach(pp => {
+    const obj = trackObjects.find(o => o.id === pp.id);
+    if (!obj || !obj.totalDistance) return;
+    obj.remoteProgress = pp.progress; // normalized 0..1
+    obj.progress = obj.remoteProgress * obj.totalDistance;
+    obj.finished = pp.finished;
+  });
+}
+
 function draw() {
-  background(30, 110, 40);
-  phaseLabel = MP.phase.toUpperCase();
-  fill(255); textAlign(CENTER, CENTER); textSize(42);
-  text(phaseLabel, width/2, height/2);
+  background(0, 100, 0);
+  calculateTrackGeometry();
+  drawTrack();
+  // Draw avatars even in lobby so arrivals appear immediately
+  drawTrackObjects();
+  // Countdown overlay text in header already handled; show phase label subtle corner
+  fill(255); textAlign(RIGHT, TOP); textSize(14);
+  text(MP.phase.toUpperCase(), width - 12, 6);
   if (MP.phase === 'results') {
-    textSize(18); text('Race complete', width/2, height/2 + 50);
+    fill(255); textAlign(CENTER, CENTER); textSize(22);
+    text('Race complete', width/2, height - 40);
   }
 }
