@@ -24,7 +24,7 @@ const { WebSocketServer } = require('ws');
 const INPUT_KEY = 'E';
 const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
-const TOTAL_LANES = 10;
+const TOTAL_LANES = 8;
 const COUNTDOWN_SECONDS = 1;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
@@ -39,8 +39,8 @@ const DECELERATION_RATE = Number(process.env.DECELERATION_RATE ?? 0.20); // per 
 const BOT_IDLE_SPEED_FACTOR = Number(process.env.BOT_IDLE_SPEED_FACTOR ?? IDLE_SPEED_FACTOR);
 const BOT_ACCELERATION_RATE = Number(process.env.BOT_ACCELERATION_RATE ?? 0.10);
 const BOT_DECELERATION_RATE = Number(process.env.BOT_DECELERATION_RATE ?? 0.22);
-const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.1);
-const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.7);
+const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.15); // increased from 0.1
+const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.8); // increased from 0.7
 const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
 const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 100);
 const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_DURATION_MS ?? 2000);
@@ -145,9 +145,10 @@ function startRace(room) {
     b.finished = false;
     b.finishSeconds = null;
     b.currentSpeed = 0;
-    // Per-bot variation so bots don't move identically
-    b.biasFactor = (0.92 + Math.random() * 0.16); // ~0.92..1.08
-    b.jitterScale = (0.7 + Math.random() * 0.6); // ~0.7..1.3
+    // Per-bot variation so bots don't move identically - wider ranges for more personality
+    b.biasFactor = (0.85 + Math.random() * 0.30); // ~0.85..1.15 (wider from 0.92..1.08)
+    b.jitterScale = (0.5 + Math.random() * 1.0); // ~0.5..1.5 (wider from 0.7..1.3)
+    b.boostPreference = Math.random(); // 0-1, affects boost decisions
     b.finishDecelStartMs = null;
     b.fullyFinished = false;
   });
@@ -198,8 +199,8 @@ function beginTick(room) {
     // Tick payload includes server time + progress snapshot during race
     let payload = { type: 'tick', tServerMs: nowMs() };
     if (room.phase === 'race') {
-      payload.players = Array.from(room.players.values()).map(p=>({ id: p.id, lane: p.lane, progress: p.progress, finished: p.finished }));
-      payload.bots = room.bots.map(b=>({ lane: b.lane, progress: b.progress, finished: b.finished }));
+      payload.players = Array.from(room.players.values()).map(p=>({ id: p.id, lane: p.lane, progress: p.progress, finished: p.finished, currentSpeed: p.currentSpeed || 0 }));
+      payload.bots = room.bots.map(b=>({ lane: b.lane, progress: b.progress, finished: b.finished, currentSpeed: b.currentSpeed || 0 }));
     }
     broadcast(room, payload);
   }, interval);
@@ -369,7 +370,7 @@ function updateRace(room) {
   const dtMs = room.lastUpdateMs ? (now - room.lastUpdateMs) : 0;
   room.lastUpdateMs = now;
   const dtSec = dtMs / 1000;
-  const baseSpeed = 1 / MAX_EXECUTION_TIME; // progress per second
+  const baseSpeed = (1 / MAX_EXECUTION_TIME) * 1.2; // progress per second (20% faster)
 
   // helper jitter using Math.random; seeds can be used later for deterministic PRNG
   function targetSpeed(boostActive) {
@@ -384,41 +385,50 @@ function updateRace(room) {
   // Update players
   room.players.forEach(p => {
     if (p.fullyFinished) return;
-    const boostActive = p.boostDown && p.boostSinceMs && (now - p.boostSinceMs) <= BOOST_MAX_DURATION_MS;
-    // Auto-end boost if duration exceeded
-    if (p.boostDown && !boostActive) {
-      p.boostDown = false;
-      p.lastBoostEndMs = now;
-      broadcast(room, { type: 'boost', playerId: p.id, down: false, atClientMs: now, accepted: true, reason: 'auto-expire' });
+
+    // Skip normal race logic if already finished (only decelerate)
+    if (!p.finished) {
+      const boostActive = p.boostDown && p.boostSinceMs && (now - p.boostSinceMs) <= BOOST_MAX_DURATION_MS;
+      // Auto-end boost if duration exceeded
+      if (p.boostDown && !boostActive) {
+        p.boostDown = false;
+        p.lastBoostEndMs = now;
+        broadcast(room, { type: 'boost', playerId: p.id, down: false, atClientMs: now, accepted: true, reason: 'auto-expire' });
+      }
+      // Integrate speed toward target using accel/decel rates
+      const tSpd = targetSpeed(boostActive);
+      const delta = tSpd - (p.currentSpeed || 0);
+      const maxUp = ACCELERATION_RATE * dtSec;
+      const maxDown = DECELERATION_RATE * dtSec;
+      const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
+      p.currentSpeed = (p.currentSpeed || 0) + step;
+      const spd = applyJitter(p.currentSpeed);
+      p.progress += spd * dtSec;
     }
-    // Integrate speed toward target using accel/decel rates
-    const tSpd = targetSpeed(boostActive);
-    const delta = tSpd - (p.currentSpeed || 0);
-    const maxUp = ACCELERATION_RATE * dtSec;
-    const maxDown = DECELERATION_RATE * dtSec;
-    const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
-    p.currentSpeed = (p.currentSpeed || 0) + step;
-    const spd = applyJitter(p.currentSpeed);
-    p.progress += spd * dtSec;
 
     // Check finish line crossing
     if (p.progress >= 1 && !p.finished) {
       p.finished = true;
       p.finishSeconds = (now - room.raceStartEpochMs) / 1000;
       p.finishDecelStartMs = now;
+      p.finishSpeed = p.currentSpeed; // Store speed at finish for physics-based deceleration
     }
 
-    // Post-finish deceleration
+    // Post-finish deceleration - physics-based with constant deceleration rate
     if (p.finished && !p.fullyFinished) {
       const decelElapsed = now - p.finishDecelStartMs;
-      if (decelElapsed >= FINISH_DECELERATION_DURATION_MS || p.currentSpeed <= 0) {
+      // Calculate deceleration as fraction of finish speed per second
+      const decelRatePerSec = (p.finishSpeed || p.currentSpeed) / (FINISH_DECELERATION_DURATION_MS / 1000);
+      const speedDrop = decelRatePerSec * dtSec;
+      p.currentSpeed = Math.max(0, p.currentSpeed - speedDrop);
+
+      // Continue moving forward while decelerating
+      const spd = applyJitter(p.currentSpeed);
+      p.progress += spd * dtSec;
+
+      if (p.currentSpeed <= 0) {
         p.fullyFinished = true;
         p.currentSpeed = 0;
-      } else {
-        // Linear deceleration to zero over duration
-        const t = decelElapsed / FINISH_DECELERATION_DURATION_MS;
-        const targetSpeed = p.currentSpeed * (1 - t);
-        p.currentSpeed = Math.max(0, targetSpeed);
       }
     }
   });
@@ -426,37 +436,47 @@ function updateRace(room) {
   // Update bots (apply similar decel/accel behavior)
   room.bots.forEach(b => {
     if (b.fullyFinished) return;
-    const boostChance = Math.random() < BOT_BOOST_PROB_PER_TICK; // occasional mini boost start
-    const botBoost = boostChance && (Math.random() < BOT_BOOST_ENABLE_PROB);
-    b.currentSpeed = b.currentSpeed || 0;
-    const tFactor = botBoost ? BOOST_FACTOR : (BOT_IDLE_SPEED_FACTOR * (b.biasFactor || 1));
-    const tSpd = baseSpeed * tFactor;
-    const delta = tSpd - b.currentSpeed;
-    const maxUp = BOT_ACCELERATION_RATE * dtSec;
-    const maxDown = BOT_DECELERATION_RATE * dtSec;
-    const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
-    b.currentSpeed = b.currentSpeed + step;
-    const spd = applyJitter(b.currentSpeed, b.jitterScale || 1);
-    b.progress += spd * dtSec;
+
+    // Skip normal race logic if already finished (only decelerate)
+    if (!b.finished) {
+      // More varied boost behavior based on bot personality
+      const boostChance = Math.random() < (BOT_BOOST_PROB_PER_TICK * (0.5 + b.boostPreference)); // personality affects frequency
+      const botBoost = boostChance && (Math.random() < BOT_BOOST_ENABLE_PROB);
+      b.currentSpeed = b.currentSpeed || 0;
+      const tFactor = botBoost ? BOOST_FACTOR : (BOT_IDLE_SPEED_FACTOR * (b.biasFactor || 1));
+      const tSpd = baseSpeed * tFactor;
+      const delta = tSpd - b.currentSpeed;
+      const maxUp = BOT_ACCELERATION_RATE * dtSec;
+      const maxDown = BOT_DECELERATION_RATE * dtSec;
+      const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
+      b.currentSpeed = b.currentSpeed + step;
+      const spd = applyJitter(b.currentSpeed, b.jitterScale || 1);
+      b.progress += spd * dtSec;
+    }
 
     // Check finish line crossing
     if (b.progress >= 1 && !b.finished) {
       b.finished = true;
       b.finishSeconds = (now - room.raceStartEpochMs) / 1000;
       b.finishDecelStartMs = now;
+      b.finishSpeed = b.currentSpeed; // Store speed at finish for physics-based deceleration
     }
 
-    // Post-finish deceleration
+    // Post-finish deceleration - physics-based with constant deceleration rate
     if (b.finished && !b.fullyFinished) {
       const decelElapsed = now - b.finishDecelStartMs;
-      if (decelElapsed >= FINISH_DECELERATION_DURATION_MS || b.currentSpeed <= 0) {
+      // Calculate deceleration as fraction of finish speed per second
+      const decelRatePerSec = (b.finishSpeed || b.currentSpeed) / (FINISH_DECELERATION_DURATION_MS / 1000);
+      const speedDrop = decelRatePerSec * dtSec;
+      b.currentSpeed = Math.max(0, b.currentSpeed - speedDrop);
+
+      // Continue moving forward while decelerating
+      const spd = applyJitter(b.currentSpeed, b.jitterScale || 1);
+      b.progress += spd * dtSec;
+
+      if (b.currentSpeed <= 0) {
         b.fullyFinished = true;
         b.currentSpeed = 0;
-      } else {
-        // Linear deceleration to zero over duration
-        const t = decelElapsed / FINISH_DECELERATION_DURATION_MS;
-        const targetSpeed = b.currentSpeed * (1 - t);
-        b.currentSpeed = Math.max(0, targetSpeed);
       }
     }
   });

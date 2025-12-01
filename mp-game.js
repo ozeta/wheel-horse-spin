@@ -241,7 +241,6 @@ let trackGeometry = {};
 const LANE_WIDTH = 40; // Lane thickness in pixels
 const AVATAR_SIZE_FACTOR = 0.8; // Avatar size relative to lane width
 const FINISH_LINE_WIDTH = 100; // Finish line chessboard width
-const TOTAL_LANES = 10; // Always show all lanes, including bots
 const INTERP_ALPHA = 0.25; // Smoothing factor toward server target (0..1)
 let trackObjects = []; // { id, username, lane, progress, remoteProgress, totalDistance, img }
 // DiceBear avatar style selection (random like sketch.js)
@@ -270,7 +269,7 @@ function windowResized() {
 }
 
 function calculateTrackGeometry() {
-  const numLanes = TOTAL_LANES;
+  const numLanes = trackObjects.length || 1; // Dynamic based on actual participants
   const margin = 40;
   const laneWidth = LANE_WIDTH;
   const outerRectWidth = width - 2 * margin;
@@ -431,6 +430,11 @@ function syncRaceProgress(playersProgress) {
     obj.remoteProgress = pp.progress; // normalized 0..1
     obj.progress = obj.progress + (target - obj.progress) * INTERP_ALPHA; // simple lerp
     obj.finished = pp.finished;
+    // Use server-provided speed and calculate acceleration from it
+    const oldSpeed = obj.currentSpeed || 0;
+    obj.currentSpeed = pp.currentSpeed || 0; // direct from server
+    const dt = 1/60; // approximate server tick interval
+    obj.currentAccel = (obj.currentSpeed - oldSpeed) / dt;
   });
 }
 
@@ -473,6 +477,27 @@ function draw() {
     textAlign(CENTER, CENTER);
     textSize(16);
     text(_boostNotice.text, width/2, 40);
+  }
+
+  // Draw player speed and acceleration during race
+  if (MP.phase === 'race') {
+    const me = trackObjects.find(o => o.id === MP.clientId);
+    if (me && typeof me.currentSpeed === 'number') {
+      const speed = me.currentSpeed.toFixed(3);
+      const accel = (me.currentAccel || 0).toFixed(3);
+      fill(0, 0, 0, 160);
+      noStroke();
+      rectMode(CENTER);
+      rect(width/2, height/2, 280, 70, 8);
+      fill(255);
+      textAlign(CENTER, CENTER);
+      textStyle(BOLD);
+      textSize(18);
+      text(`Speed: ${speed}`, width/2, height/2 - 12);
+      textSize(14);
+      text(`Acceleration: ${accel}`, width/2, height/2 + 12);
+      textStyle(NORMAL);
+    }
   }
 }
 
