@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: multiplayer-race
     plan: free
-    region: frankfurt
+    region: oregon
     autoDeploy: true
     buildCommand: npm install
     startCommand: npm start
@@ -22,4 +22,4 @@ services:
 databases:
   - name: wheel-horse-spin-db
     plan: free
-    region: frankfurt
+    region: oregon
