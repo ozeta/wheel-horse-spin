@@ -20,6 +20,23 @@ const express = require('express');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { execSync } = require('child_process');
+// Optional database integration (auto-migrate on startup if DATABASE_URL present)
+let dbPool = null;
+try {
+  if (process.env.DATABASE_URL) {
+    const { Pool } = require('pg');
+    dbPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    });
+    // Run migrations idempotently
+    const { migrate } = require('./db/migrate');
+    migrate(dbPool).catch(err => console.error('[db] migrate error', err));
+  }
+} catch (err) {
+  console.error('[db] init failed', err);
+  dbPool = null;
+}
 
 // Get commit SHA at startup (fallback if git not available or not a git repo)
 let COMMIT_SHA = 'unknown';
@@ -205,6 +222,10 @@ function endRace(room, results) {
   console.log(`[room:${room.id}] race end (raceId=${room.raceId}) winner=${winnerId}`);
   broadcast(room, { type: 'raceEnd', results });
   stopTick(room);
+  // Persist race results if DB available
+  if (dbPool && results && results.results && Array.isArray(results.results)) {
+    saveRaceResults(room, results).catch(err => console.error('[db] saveRaceResults error', err));
+  }
   // Do not auto-reset; wait for host to exit or explicit command
 }
 
@@ -241,6 +262,97 @@ app.use(express.static(staticPath));
 // API endpoint to get current commit SHA (cached at startup)
 app.get('/api/commit', (req, res) => {
   res.json({ sha: COMMIT_SHA });
+});
+
+// Health endpoint: reports basic status and DB connectivity
+app.get('/api/health', async (req, res) => {
+  const health = { status: 'ok', commit: COMMIT_SHA, db: { configured: !!dbPool, ok: false } };
+  if (dbPool) {
+    try {
+      const r = await dbPool.query('SELECT 1');
+      health.db.ok = !!r;
+    } catch (err) {
+      health.db.ok = false;
+      health.db.error = String(err.message || err);
+    }
+  }
+  res.json(health);
+});
+
+// Leaderboard APIs (DB optional)
+app.get('/api/leaderboard/fastest', async (req, res) => {
+  if (!dbPool) return res.json({ items: [] });
+  try {
+    const { rows } = await dbPool.query(`
+      SELECT r.winner_username AS username, r.winner_time_seconds AS time, r.race_timestamp AS ts, r.room_id
+      FROM races r
+      ORDER BY r.winner_time_seconds ASC
+      LIMIT 10
+    `);
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('[api] fastest error', err);
+    res.json({ items: [] });
+  }
+});
+
+app.get('/api/leaderboard/top', async (req, res) => {
+  if (!dbPool) return res.json({ items: [] });
+  try {
+    const { rows } = await dbPool.query(`
+      SELECT winner_username AS username, COUNT(*) AS wins, MIN(winner_time_seconds) AS best_time
+      FROM races
+      GROUP BY winner_username
+      ORDER BY wins DESC, best_time ASC
+      LIMIT 10
+    `);
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('[api] top error', err);
+    res.json({ items: [] });
+  }
+});
+
+app.get('/api/leaderboard/player/:username', async (req, res) => {
+  const username = String(req.params.username || '').trim();
+  if (!dbPool || !username) return res.json({ items: [] });
+  try {
+    const { rows } = await dbPool.query(`
+      SELECT r.race_timestamp AS ts, rp.final_position AS position, rp.finish_time_seconds AS time,
+             rp.delta_from_winner_seconds AS delta, r.total_participants AS total
+      FROM race_participants rp
+      JOIN races r ON rp.race_id = r.id
+      WHERE rp.username = $1 AND rp.is_bot = false
+      ORDER BY r.race_timestamp DESC
+      LIMIT 20
+    `, [username]);
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('[api] player error', err);
+    res.json({ items: [] });
+  }
+});
+
+// Players who most recently arrived last among humans, with their last time
+app.get('/api/leaderboard/last-humans', async (req, res) => {
+  if (!dbPool) return res.json({ items: [] });
+  try {
+    const { rows } = await dbPool.query(`
+      SELECT DISTINCT ON (rp.username)
+        rp.username,
+        rp.human_finish_time_seconds AS time,
+        r.race_timestamp AS ts,
+        r.room_id
+      FROM race_participants rp
+      JOIN races r ON r.id = rp.race_id
+      WHERE rp.is_last_human = TRUE AND rp.is_bot = FALSE
+      ORDER BY rp.username, r.race_timestamp DESC
+    `);
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('[api] last-humans error', err);
+    res.json({ items: [] });
+  }
 });
 
 // Fallback: serve game.html as default
@@ -532,6 +644,78 @@ function updateRace(room) {
     const winnerTime = results[0] ? results[0].finishSeconds : null;
     results.forEach(r => { r.deltaSeconds = winnerTime != null ? +(r.finishSeconds - winnerTime).toFixed(3) : null; });
     endRace(room, { winnerId, results });
+  }
+}
+
+// Save race results to database
+async function saveRaceResults(room, resultsObj) {
+  if (!dbPool) return;
+  const results = resultsObj.results;
+  if (!Array.isArray(results) || results.length === 0) return;
+  const client = await dbPool.connect();
+  try {
+    await client.query('BEGIN');
+    const winner = results[0];
+    const last = results[results.length - 1];
+    const humanCount = results.filter(r => !r.isBot).length;
+    const botCount = results.filter(r => r.isBot).length;
+    // Compute human-only ranking and last-human
+    const humanResults = results.filter(r => !r.isBot).slice().sort((a,b)=>a.finishSeconds - b.finishSeconds);
+    const humanLast = humanResults[humanResults.length - 1];
+    const raceRes = await client.query(`
+      INSERT INTO races (
+        race_id, room_id, race_duration_seconds, total_participants,
+        human_players_count, bot_count, winner_id, winner_username,
+        winner_time_seconds, last_place_time_seconds
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING id
+    `, [
+      room.raceId,
+      room.id,
+      last.finishSeconds,
+      results.length,
+      humanCount,
+      botCount,
+      winner.id,
+      winner.username,
+      winner.finishSeconds,
+      last.finishSeconds
+    ]);
+    const raceDbId = raceRes.rows[0].id;
+    // participants
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const humanIndex = r.isBot ? null : humanResults.findIndex(h => h.id === r.id);
+      const humanFinalPos = humanIndex != null && humanIndex >= 0 ? (humanIndex + 1) : null;
+      const isLastHuman = !!(humanLast && !r.isBot && humanLast.id === r.id);
+      const humanFinishTime = !r.isBot ? r.finishSeconds : null;
+      await client.query(`
+        INSERT INTO race_participants (
+          race_id, player_id, username, is_bot, lane,
+          finish_time_seconds, delta_from_winner_seconds, final_position,
+          is_last_human, human_final_position, human_finish_time_seconds
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `, [
+        raceDbId,
+        r.id,
+        r.username,
+        r.isBot || false,
+        r.lane,
+        r.finishSeconds,
+        r.deltaSeconds,
+        i + 1,
+        isLastHuman,
+        humanFinalPos,
+        humanFinishTime
+      ]);
+    }
+    await client.query('COMMIT');
+    console.log(`[db] race saved raceId=${room.raceId} rows=${results.length}`);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[db] save error', err);
+  } finally {
+    client.release();
   }
 }
 

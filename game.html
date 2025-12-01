@@ -49,6 +49,19 @@
           <h3 style="margin:8px 0 6px; font-size:16px;">Final Leaderboard</h3>
           <ol id="final-list" style="padding-left:18px; margin:0; font-size:13px;"></ol>
         </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:12px;">
+          <label style="font-size:12px;"><input type="checkbox" id="lb-toggle" checked /> Show Leaderboards</label>
+          <span id="lb-health" style="font-size:11px; color:#666;">checking…</span>
+        </div>
+        <div id="leaderboardWrap" style="display:block; margin-top:8px;">
+          <h3 style="margin:8px 0 6px; font-size:16px;">Last Human Finishers</h3>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px;">
+              <ul id="lb-last-humans" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
+            </div>
+          </div>
+          <div id="lb-note" style="font-size:11px; color:#666; margin-top:6px;">Note: Requires DB; empty if not configured.</div>
+        </div>
         <!-- Repo link at bottom -->
         <div style="margin-top:auto; padding-top:8px; border-top:1px solid #ddd;">
           <div style="display:flex; align-items:center; gap:8px;">
@@ -69,5 +82,37 @@
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.js"></script>
   <script src="config.js"></script>
   <script src="mp-game.js"></script>
+  <script>
+    async function fetchJSON(url) {
+      try { const r = await fetch(url); return await r.json(); } catch { return { items: [] }; }
+    }
+    async function refreshLeaderboards() {
+      const lastHumans = await fetchJSON('/api/leaderboard/last-humans');
+      const ul = document.getElementById('lb-last-humans');
+      ul.innerHTML = '';
+      (lastHumans.items || []).forEach(it => {
+        const li = document.createElement('li');
+        const time = typeof it.time === 'number' ? `${(+it.time).toFixed(2)}s` : `${it.time}`;
+        const when = it.ts ? new Date(it.ts).toLocaleString() : '';
+        li.textContent = `${it.username} — ${time} (last among humans, ${when})`;
+        ul.appendChild(li);
+      });
+    }
+    window.addEventListener('DOMContentLoaded', () => {
+      // Health check
+      fetchJSON('/api/health').then(h => {
+        const el = document.getElementById('lb-health');
+        if (!el) return;
+        const db = h.db || {}; const s = db.configured ? (db.ok ? 'DB: ok' : 'DB: error') : 'DB: not configured';
+        el.textContent = s;
+      });
+      refreshLeaderboards();
+      const toggle = document.getElementById('lb-toggle');
+      const wrap = document.getElementById('leaderboardWrap');
+      if (toggle && wrap) toggle.addEventListener('change', () => {
+        wrap.style.display = toggle.checked ? 'block' : 'none';
+      });
+    });
+  </script>
 </body>
 </html>
