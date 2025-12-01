@@ -23,10 +23,22 @@ const INPUT_KEY = 'E';
 const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 10;
-const COUNTDOWN_SECONDS = 3;
+const COUNTDOWN_SECONDS = 1;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 1.4;
+// Motion tuning: when not boosting, players decelerate toward an idle speed.
+// Accel/decel rates are in progress-per-second change per second (applied over dt).
+const IDLE_SPEED_FACTOR = Number(process.env.IDLE_SPEED_FACTOR ?? 0.6); // vs base
+const ACCELERATION_RATE = Number(process.env.ACCELERATION_RATE ?? 0.12); // per sec
+const DECELERATION_RATE = Number(process.env.DECELERATION_RATE ?? 0.20); // per sec
+// Bot-specific motion tuning
+// Make bot base speed equal to player start (idle) speed by default
+const BOT_IDLE_SPEED_FACTOR = Number(process.env.BOT_IDLE_SPEED_FACTOR ?? IDLE_SPEED_FACTOR);
+const BOT_ACCELERATION_RATE = Number(process.env.BOT_ACCELERATION_RATE ?? 0.10);
+const BOT_DECELERATION_RATE = Number(process.env.BOT_DECELERATION_RATE ?? 0.22);
+const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.1);
+const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.7);
 const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
 const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 100);
 
@@ -52,7 +64,7 @@ function createRoom(roomId) {
     raceStartEpochMs: null,
     raceId: null,
     seeds: {},
-    constants: { INPUT_KEY, DEFAULT_PLAYERS, MAX_PLAYERS, TOTAL_LANES, COUNTDOWN_SECONDS, BOOST_FACTOR, BOOST_MAX_DURATION_MS, BOOST_COOLDOWN_MS },
+    constants: { INPUT_KEY, DEFAULT_PLAYERS, MAX_PLAYERS, TOTAL_LANES, COUNTDOWN_SECONDS, BOOST_FACTOR, BOOST_MAX_DURATION_MS, BOOST_COOLDOWN_MS, IDLE_SPEED_FACTOR, ACCELERATION_RATE, DECELERATION_RATE, BOT_IDLE_SPEED_FACTOR, BOT_ACCELERATION_RATE, BOT_DECELERATION_RATE, BOT_BOOST_PROB_PER_TICK, BOT_BOOST_ENABLE_PROB },
     tickTimer: null,
     lastUpdateMs: null,
   };
@@ -121,11 +133,16 @@ function startRace(room) {
     p.boostSinceMs = null;
     p.lastBoostStartMs = null;
     p.lastBoostEndMs = null; // cooldown reference
+    p.currentSpeed = 0; // progress/sec, integrated toward target
   });
   room.bots.forEach(b => {
     b.progress = 0;
     b.finished = false;
     b.finishSeconds = null;
+    b.currentSpeed = 0;
+    // Per-bot variation so bots don't move identically
+    b.biasFactor = (0.92 + Math.random() * 0.16); // ~0.92..1.08
+    b.jitterScale = (0.7 + Math.random() * 0.6); // ~0.7..1.3
   });
   room.lastUpdateMs = room.raceStartEpochMs;
   console.log(`[room:${room.id}] race start (raceId=${room.raceId}, players=${room.players.size}, bots=${room.bots.length})`);
@@ -337,11 +354,13 @@ function updateRace(room) {
   const baseSpeed = 1 / MAX_EXECUTION_TIME; // progress per second
 
   // helper jitter using Math.random; seeds can be used later for deterministic PRNG
-  function speedWithJitter(boostActive) {
-    const jitter = (Math.random() - 0.5) * 0.06; // ±3%
-    let speed = baseSpeed * (1 + jitter);
-    if (boostActive) speed *= BOOST_FACTOR;
-    return speed;
+  function targetSpeed(boostActive) {
+    const targetFactor = boostActive ? BOOST_FACTOR : IDLE_SPEED_FACTOR;
+    return baseSpeed * targetFactor;
+  }
+  function applyJitter(spd, scale = 1) {
+    const jitter = (Math.random() - 0.5) * 0.06 * scale; // base ±3%, scaled
+    return spd * (1 + jitter);
   }
 
   // Update players
@@ -354,21 +373,36 @@ function updateRace(room) {
       p.lastBoostEndMs = now;
       broadcast(room, { type: 'boost', playerId: p.id, down: false, atClientMs: now, accepted: true, reason: 'auto-expire' });
     }
-    const speed = speedWithJitter(boostActive);
-    p.progress += speed * dtSec;
+    // Integrate speed toward target using accel/decel rates
+    const tSpd = targetSpeed(boostActive);
+    const delta = tSpd - (p.currentSpeed || 0);
+    const maxUp = ACCELERATION_RATE * dtSec;
+    const maxDown = DECELERATION_RATE * dtSec;
+    const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
+    p.currentSpeed = (p.currentSpeed || 0) + step;
+    const spd = applyJitter(p.currentSpeed);
+    p.progress += spd * dtSec;
     if (p.progress >= 1 && !p.finished) {
       p.finished = true;
       p.finishSeconds = (now - room.raceStartEpochMs) / 1000;
     }
   });
 
-  // Update bots
+  // Update bots (apply similar decel/accel behavior)
   room.bots.forEach(b => {
     if (b.finished) return;
-    const boostChance = Math.random() < 0.02; // occasional mini boost start
-    const botBoost = boostChance && (Math.random() < 0.5);
-    const speed = speedWithJitter(botBoost);
-    b.progress += speed * dtSec;
+    const boostChance = Math.random() < BOT_BOOST_PROB_PER_TICK; // occasional mini boost start
+    const botBoost = boostChance && (Math.random() < BOT_BOOST_ENABLE_PROB);
+    b.currentSpeed = b.currentSpeed || 0;
+    const tFactor = botBoost ? BOOST_FACTOR : (BOT_IDLE_SPEED_FACTOR * (b.biasFactor || 1));
+    const tSpd = baseSpeed * tFactor;
+    const delta = tSpd - b.currentSpeed;
+    const maxUp = BOT_ACCELERATION_RATE * dtSec;
+    const maxDown = BOT_DECELERATION_RATE * dtSec;
+    const step = delta > 0 ? Math.min(delta, maxUp) : Math.max(delta, -maxDown);
+    b.currentSpeed = b.currentSpeed + step;
+    const spd = applyJitter(b.currentSpeed, b.jitterScale || 1);
+    b.progress += spd * dtSec;
     if (b.progress >= 1 && !b.finished) {
       b.finished = true;
       b.finishSeconds = (now - room.raceStartEpochMs) / 1000;
