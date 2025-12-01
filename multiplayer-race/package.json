@@ -7,11 +7,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js",
+    "dev": "nodemon --watch server.js --watch thin-client.js --ext js --delay 200ms server.js",
     "client": "node thin-client.js ws://localhost:8080 roomId=dev username=Tester",
     "clients:pretty": "node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=true && node thin-client.js ws://localhost:8080 roomId=dev username=Bob pretty-output=true"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  }
+  ,
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
