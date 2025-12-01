@@ -21,7 +21,10 @@ let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
     raceOverlay, lobbySection, resultsWrap, finalList;
 // Config captured from URL or defaults
-MP.serverUrl = 'ws://localhost:8080';
+// Derive server URL: allow override via window/global or meta tag, fallback to localhost.
+const injectedUrl = (typeof window !== 'undefined' && (window.__MP_SERVER_URL || window.MP_SERVER_URL))
+  || (document.querySelector('meta[name="mp-server-url"]')?.content);
+MP.serverUrl = injectedUrl || 'ws://localhost:8080';
 
 // --- Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
@@ -48,7 +51,16 @@ window.addEventListener('DOMContentLoaded', () => {
   const serverParam = params.get('server');
   MP.room = (roomParam && roomParam.trim()) || 'dev';
   MP.username = (nameParam && nameParam.trim()) || 'Browser';
+  // If server param provided, prefer it
   MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
+  // Normalize protocol: if page is https and using ws:// remote host, upgrade to wss://
+  try {
+    const u = new URL(MP.serverUrl, window.location.href);
+    if (window.location.protocol === 'https:' && u.protocol === 'ws:') {
+      u.protocol = 'wss:';
+      MP.serverUrl = u.toString();
+    }
+  } catch {}
   if (displayServer) displayServer.textContent = `Server: ${MP.serverUrl}`;
   if (displayRoom) displayRoom.textContent = `Room: ${MP.room}`;
 
