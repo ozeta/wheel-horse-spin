@@ -14,19 +14,3 @@ services:
         value: production
       - key: PORT
         value: 8080
-
-  - type: web
-    name: wheel-horse-spin-frontend
-    runtime: static
-    rootDir: .
-    plan: free
-    autoDeploy: true
-    buildCommand: ""
-    staticPublishPath: .
-    headers:
-      - path: "**/*.js"
-        name: Cache-Control
-        value: no-cache
-      - path: "**/*.css"
-        name: Cache-Control
-        value: no-cache

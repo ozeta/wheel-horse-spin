@@ -21,10 +21,10 @@ let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
     raceOverlay, lobbySection, resultsWrap, finalList;
 // Config captured from URL or defaults
-// Derive server URL: allow override via window/global or meta tag, fallback to localhost.
-const injectedUrl = (typeof window !== 'undefined' && (window.__MP_SERVER_URL || window.MP_SERVER_URL))
-  || (document.querySelector('meta[name="mp-server-url"]')?.content);
-MP.serverUrl = injectedUrl || 'ws://localhost:8080';
+// Derive server URL: same-origin WebSocket by default (works locally and on Render)
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const host = window.location.host; // includes port
+MP.serverUrl = `${protocol}//${host}`;
 
 // --- Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
@@ -51,6 +51,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const serverParam = params.get('server');
   MP.room = (roomParam && roomParam.trim()) || 'dev';
   MP.username = (nameParam && nameParam.trim()) || 'Browser';
+  // Allow server override via query param
+  MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
   // If server param provided, prefer it
   MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
   // Normalize protocol: if page is https and using ws:// remote host, upgrade to wss://

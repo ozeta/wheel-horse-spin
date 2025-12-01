@@ -12,6 +12,7 @@
     "clients:pretty": "node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=true && node thin-client.js ws://localhost:8080 roomId=dev username=Bob pretty-output=true"
   },
   "dependencies": {
+    "express": "^4.18.2",
     "ws": "^8.18.0"
   }
   ,

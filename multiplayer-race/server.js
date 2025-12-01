@@ -16,6 +16,8 @@
 //    node thin-client.js ws://localhost:8080 roomId=dev username=Bob
 
 const http = require('http');
+const express = require('express');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 
 // --- Constants ---
@@ -41,6 +43,7 @@ const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.
 const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.7);
 const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
 const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 100);
+const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_DURATION_MS ?? 2000);
 
 // Base motion constants (should match client)
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
@@ -64,7 +67,7 @@ function createRoom(roomId) {
     raceStartEpochMs: null,
     raceId: null,
     seeds: {},
-    constants: { INPUT_KEY, DEFAULT_PLAYERS, MAX_PLAYERS, TOTAL_LANES, COUNTDOWN_SECONDS, BOOST_FACTOR, BOOST_MAX_DURATION_MS, BOOST_COOLDOWN_MS, IDLE_SPEED_FACTOR, ACCELERATION_RATE, DECELERATION_RATE, BOT_IDLE_SPEED_FACTOR, BOT_ACCELERATION_RATE, BOT_DECELERATION_RATE, BOT_BOOST_PROB_PER_TICK, BOT_BOOST_ENABLE_PROB },
+    constants: { INPUT_KEY, DEFAULT_PLAYERS, MAX_PLAYERS, TOTAL_LANES, COUNTDOWN_SECONDS, BOOST_FACTOR, BOOST_MAX_DURATION_MS, BOOST_COOLDOWN_MS, IDLE_SPEED_FACTOR, ACCELERATION_RATE, DECELERATION_RATE, BOT_IDLE_SPEED_FACTOR, BOT_ACCELERATION_RATE, BOT_DECELERATION_RATE, BOT_BOOST_PROB_PER_TICK, BOT_BOOST_ENABLE_PROB, FINISH_DECELERATION_DURATION_MS },
     tickTimer: null,
     lastUpdateMs: null,
   };
@@ -134,6 +137,8 @@ function startRace(room) {
     p.lastBoostStartMs = null;
     p.lastBoostEndMs = null; // cooldown reference
     p.currentSpeed = 0; // progress/sec, integrated toward target
+    p.finishDecelStartMs = null; // when post-finish decel started
+    p.fullyFinished = false; // true when deceleration complete
   });
   room.bots.forEach(b => {
     b.progress = 0;
@@ -143,6 +148,8 @@ function startRace(room) {
     // Per-bot variation so bots don't move identically
     b.biasFactor = (0.92 + Math.random() * 0.16); // ~0.92..1.08
     b.jitterScale = (0.7 + Math.random() * 0.6); // ~0.7..1.3
+    b.finishDecelStartMs = null;
+    b.fullyFinished = false;
   });
   room.lastUpdateMs = room.raceStartEpochMs;
   console.log(`[room:${room.id}] race start (raceId=${room.raceId}, players=${room.players.size}, bots=${room.bots.length})`);
@@ -205,7 +212,18 @@ function stopTick(room) {
 }
 
 // --- Server Setup ---
-const server = http.createServer();
+const app = express();
+
+// Serve static files from parent directory (repo root)
+const staticPath = path.join(__dirname, '..');
+app.use(express.static(staticPath));
+
+// Fallback: serve game.html as default
+app.get('/', (req, res) => {
+  res.sendFile(path.join(staticPath, 'game.html'));
+});
+
+const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
@@ -365,7 +383,7 @@ function updateRace(room) {
 
   // Update players
   room.players.forEach(p => {
-    if (p.finished) return;
+    if (p.fullyFinished) return;
     const boostActive = p.boostDown && p.boostSinceMs && (now - p.boostSinceMs) <= BOOST_MAX_DURATION_MS;
     // Auto-end boost if duration exceeded
     if (p.boostDown && !boostActive) {
@@ -382,15 +400,32 @@ function updateRace(room) {
     p.currentSpeed = (p.currentSpeed || 0) + step;
     const spd = applyJitter(p.currentSpeed);
     p.progress += spd * dtSec;
+
+    // Check finish line crossing
     if (p.progress >= 1 && !p.finished) {
       p.finished = true;
       p.finishSeconds = (now - room.raceStartEpochMs) / 1000;
+      p.finishDecelStartMs = now;
+    }
+
+    // Post-finish deceleration
+    if (p.finished && !p.fullyFinished) {
+      const decelElapsed = now - p.finishDecelStartMs;
+      if (decelElapsed >= FINISH_DECELERATION_DURATION_MS || p.currentSpeed <= 0) {
+        p.fullyFinished = true;
+        p.currentSpeed = 0;
+      } else {
+        // Linear deceleration to zero over duration
+        const t = decelElapsed / FINISH_DECELERATION_DURATION_MS;
+        const targetSpeed = p.currentSpeed * (1 - t);
+        p.currentSpeed = Math.max(0, targetSpeed);
+      }
     }
   });
 
   // Update bots (apply similar decel/accel behavior)
   room.bots.forEach(b => {
-    if (b.finished) return;
+    if (b.fullyFinished) return;
     const boostChance = Math.random() < BOT_BOOST_PROB_PER_TICK; // occasional mini boost start
     const botBoost = boostChance && (Math.random() < BOT_BOOST_ENABLE_PROB);
     b.currentSpeed = b.currentSpeed || 0;
@@ -403,15 +438,32 @@ function updateRace(room) {
     b.currentSpeed = b.currentSpeed + step;
     const spd = applyJitter(b.currentSpeed, b.jitterScale || 1);
     b.progress += spd * dtSec;
+
+    // Check finish line crossing
     if (b.progress >= 1 && !b.finished) {
       b.finished = true;
       b.finishSeconds = (now - room.raceStartEpochMs) / 1000;
+      b.finishDecelStartMs = now;
+    }
+
+    // Post-finish deceleration
+    if (b.finished && !b.fullyFinished) {
+      const decelElapsed = now - b.finishDecelStartMs;
+      if (decelElapsed >= FINISH_DECELERATION_DURATION_MS || b.currentSpeed <= 0) {
+        b.fullyFinished = true;
+        b.currentSpeed = 0;
+      } else {
+        // Linear deceleration to zero over duration
+        const t = decelElapsed / FINISH_DECELERATION_DURATION_MS;
+        const targetSpeed = b.currentSpeed * (1 - t);
+        b.currentSpeed = Math.max(0, targetSpeed);
+      }
     }
   });
 
-  // Completion check
-  const allPlayersFinished = Array.from(room.players.values()).every(p => p.finished);
-  const allBotsFinished = room.bots.every(b => b.finished);
+  // Completion check - wait for all to fully stop after deceleration
+  const allPlayersFinished = Array.from(room.players.values()).every(p => p.fullyFinished);
+  const allBotsFinished = room.bots.every(b => b.fullyFinished);
   if (allPlayersFinished && allBotsFinished) {
     // Compile results
     const results = [];
