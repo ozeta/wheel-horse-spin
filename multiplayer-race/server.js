@@ -10,7 +10,7 @@
 //    npm start  # uses PORT env if provided
 //    # or
 //    node server.js
-//no.
+//
 // 3) Optional: run thin client(s) in another terminal to simulate players
 //    node thin-client.js ws://localhost:8080 roomId=dev username=Alice
 //    node thin-client.js ws://localhost:8080 roomId=dev username=Bob
@@ -39,7 +39,6 @@ const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 8;
 const COUNTDOWN_SECONDS = 1;
-const AUTOSTART_ENABLED = false; // disable auto-start when all players ready
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 2.0; // increased from 1.4 for more noticeable boost
@@ -270,15 +269,6 @@ wss.on('connection', (ws, req) => {
       console.log(`[room:${room.id}] connect clientId=${clientId} username=${username} (hostId=${room.hostId})`);
       ws.send(JSON.stringify({ type: 'welcome', clientId, roomId: room.id, hostId: room.hostId }));
       broadcast(room, roomStatePayload(room));
-      // Auto-start policy: if room was empty and now we have enough players, start a new game
-      const playerCount = room.players.size;
-      if (room.phase === 'lobby' && playerCount >= 2) {
-        console.log(`[room:${room.id}] auto-start threshold met (players=${playerCount}) -> countdown`);
-        startCountdown(room);
-        setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
-      } else if (room.phase === 'lobby') {
-        console.log(`[room:${room.id}] waiting in lobby (players=${playerCount}, need >=2 for auto-start)`);
-      }
       return;
     }
     if (!room || !player) return;
@@ -288,14 +278,6 @@ wss.on('connection', (ws, req) => {
         player.ready = !!msg.ready;
         if (player.ready) room.readySet.add(player.id); else room.readySet.delete(player.id);
         broadcast(room, roomStatePayload(room));
-        // auto-start if enabled and all ready and >=2 players
-        if (AUTOSTART_ENABLED) {
-          const readyCount = Array.from(room.players.values()).filter(p=>p.ready).length;
-          if (readyCount >= Math.max(DEFAULT_PLAYERS, 2) && readyCount === room.players.size && room.phase === 'lobby') {
-            startCountdown(room);
-            setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
-          }
-        }
         break;
       }
       case 'startGame': {

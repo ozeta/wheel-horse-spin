@@ -162,6 +162,8 @@ function handleMessage(msg) {
       break;
     case 'raceEnd':
       MP.phase = 'results'; raceOverlay.style.display = 'flex';
+      // Reset all players to unready on client side
+      MP.players.forEach(p => { p.ready = false; });
       // Populate Final Leaderboard in sidebar
       if (resultsWrap && finalList) {
         resultsWrap.style.display = 'block';
@@ -183,6 +185,9 @@ function handleMessage(msg) {
         });
       }
       if (lobbySection) lobbySection.style.display = 'block';
+      // Update UI to reflect unready state
+      renderPlayers();
+      updateButtons();
       break;
     case 'boost':
       // show notification on boost press/release
@@ -209,6 +214,9 @@ function updateButtons() {
   resetBtn.style.display = isHost && MP.phase === 'results' ? 'block' : 'none';
   resetBtn.disabled = !(isHost && MP.phase === 'results');
 
+  // Disable ready button when game is in results phase (only host can reset)
+  readyBtn.disabled = MP.phase === 'results';
+
   if (me) {
     readyBtn.textContent = me.ready ? 'Unready' : 'Ready to Start';
     // Disable rename while marked ready
@@ -223,7 +231,7 @@ function renderPlayers() {
   MP.players.forEach(p => {
     const li = document.createElement('li');
     const hostMark = p.id === MP.hostId ? ' (host)' : '';
-    const readyMark = p.ready ? ' [Ready]' : '';
+    const readyMark = p.ready ? ' [ready 🟢]' : ' [not ready 🔴]';
     const youMark = p.id === MP.clientId ? ' (You)' : '';
     li.textContent = `#${p.id} ${p.username}${youMark}${hostMark}${readyMark}`;
     playerListUL.appendChild(li);
