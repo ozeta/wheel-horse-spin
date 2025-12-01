@@ -25,10 +25,19 @@ let dbPool = null;
 try {
   if (process.env.DATABASE_URL) {
     const { Pool } = require('pg');
-    dbPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
-    });
+    const connStr = process.env.DATABASE_URL;
+    let poolConfig = { connectionString: connStr };
+    // Enable SSL only when explicitly requested or when URL scheme requires it
+    const wantSSL = String(process.env.DATABASE_SSL || '').toLowerCase() === 'true';
+    try {
+      const u = new URL(connStr);
+      const host = u.hostname || '';
+      const hostedProvider = /render|azure|amazonaws|heroku|supabase|neon|timescale/.test(host);
+      if (wantSSL || hostedProvider) {
+        poolConfig.ssl = { rejectUnauthorized: false };
+      }
+    } catch {}
+    dbPool = new Pool(poolConfig);
     // Run migrations idempotently
     const { migrate } = require('./db/migrate');
     migrate(dbPool).catch(err => console.error('[db] migrate error', err));
@@ -337,7 +346,8 @@ app.get('/api/leaderboard/player/:username', async (req, res) => {
 app.get('/api/leaderboard/last-humans', async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   try {
-    const { rows } = await dbPool.query(`
+    const room = (req.query.room && String(req.query.room).trim()) || null;
+    const sql = `
       SELECT DISTINCT ON (rp.username)
         rp.username,
         rp.human_finish_time_seconds AS time,
@@ -346,11 +356,91 @@ app.get('/api/leaderboard/last-humans', async (req, res) => {
       FROM race_participants rp
       JOIN races r ON r.id = rp.race_id
       WHERE rp.is_last_human = TRUE AND rp.is_bot = FALSE
+      ${room ? 'AND r.room_id = $1' : ''}
       ORDER BY rp.username, r.race_timestamp DESC
-    `);
+    `;
+    const params = room ? [room] : [];
+    const { rows } = await dbPool.query(sql, params);
     res.json({ items: rows });
   } catch (err) {
     console.error('[api] last-humans error', err);
+    res.json({ items: [] });
+  }
+});
+
+// Room summary: per human player -> wins count, last-place count, last win time+seconds, last last-place time+seconds
+app.get('/api/leaderboard/room-summary', async (req, res) => {
+  if (!dbPool) return res.json({ items: [] });
+  const room = (req.query.room && String(req.query.room).trim()) || null;
+  if (!room) return res.json({ items: [] });
+  try {
+    // Wins summary per username in room
+    const winsQuery = `
+      SELECT r.winner_username AS username,
+             COUNT(*) AS wins,
+             MAX(r.race_timestamp) AS last_win_ts,
+             (ARRAY_AGG(r.winner_time_seconds ORDER BY r.race_timestamp DESC))[1] AS last_win_seconds
+      FROM races r
+      WHERE r.room_id = $1 AND r.winner_username IS NOT NULL
+      GROUP BY r.winner_username
+    `;
+    const winsRes = await dbPool.query(winsQuery, [room]);
+    const winsMap = new Map();
+    winsRes.rows.forEach(row => {
+      winsMap.set(row.username, {
+        username: row.username,
+        wins: Number(row.wins) || 0,
+        last_win_ts: row.last_win_ts,
+        last_win_seconds: row.last_win_seconds != null ? Number(row.last_win_seconds) : null,
+      });
+    });
+
+    // Last-place summary per username in room (humans only)
+    const lastQuery = `
+      SELECT rp.username AS username,
+             COUNT(*) AS last_places,
+             MAX(r.race_timestamp) AS last_last_ts,
+             (ARRAY_AGG(rp.human_finish_time_seconds ORDER BY r.race_timestamp DESC))[1] AS last_last_seconds
+      FROM race_participants rp
+      JOIN races r ON r.id = rp.race_id
+      WHERE r.room_id = $1 AND rp.is_bot = FALSE AND rp.is_last_human = TRUE
+      GROUP BY rp.username
+    `;
+    const lastRes = await dbPool.query(lastQuery, [room]);
+    const lastMap = new Map();
+    lastRes.rows.forEach(row => {
+      lastMap.set(row.username, {
+        username: row.username,
+        last_places: Number(row.last_places) || 0,
+        last_last_ts: row.last_last_ts,
+        last_last_seconds: row.last_last_seconds != null ? Number(row.last_last_seconds) : null,
+      });
+    });
+
+    // Union of usernames present in either wins or last maps
+    const usernames = new Set([...winsMap.keys(), ...lastMap.keys()]);
+    const items = Array.from(usernames).map(u => {
+      const w = winsMap.get(u) || {};
+      const l = lastMap.get(u) || {};
+      return {
+        username: u,
+        wins: w.wins || 0,
+        last_places: l.last_places || 0,
+        last_win_ts: w.last_win_ts || null,
+        last_win_seconds: w.last_win_seconds || null,
+        last_last_ts: l.last_last_ts || null,
+        last_last_seconds: l.last_last_seconds || null,
+      };
+    }).sort((a,b) => {
+      // Sort by wins desc, then last_places desc, then username asc
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.last_places !== a.last_places) return b.last_places - a.last_places;
+      return String(a.username).localeCompare(String(b.username));
+    });
+
+    res.json({ room, items });
+  } catch (err) {
+    console.error('[api] room-summary error', err);
     res.json({ items: [] });
   }
 });

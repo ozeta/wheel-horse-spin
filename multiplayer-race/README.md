@@ -33,7 +33,32 @@ export DATABASE_URL="postgresql://username:password@host:port/dbname"
 npm start
 ```
 
+### Local Postgres via Docker Compose
+
+You can spin up Postgres locally with Adminer using the root `docker-compose.yml`:
+
+```zsh
+# From repo root
+docker compose up -d
+
+# Connection string for local DB
+export DATABASE_URL="postgresql://whs:whs_password@localhost:5432/wheel_horse_spin"
+
+# Run migrations (optional, server will auto-migrate on start)
+cd multiplayer-race
+npm run db:migrate
+
+# Seed demo data
+npm run db:seed
+
+# Start server (leaderboards active)
+npm start
+```
+
+Adminer UI: open `http://localhost:8081` (System: PostgreSQL, Server: `db` or `localhost`, Username: `whs`, Password: `whs_password`, Database: `wheel_horse_spin`).
+
 APIs:
+
 - `GET /api/health` — server + DB status
 - `GET /api/commit` — current commit SHA
 - `GET /api/leaderboard/top` — top winners (wins + best time)
@@ -41,6 +66,7 @@ APIs:
 - `GET /api/leaderboard/player/:username` — recent races for a player
 
 Notes:
+
 - If no DB is configured, leaderboard endpoints return `{ items: [] }`.
 - Health endpoint reports `db.configured` and `db.ok`.
 

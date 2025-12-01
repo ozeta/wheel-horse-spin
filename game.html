@@ -54,10 +54,10 @@
           <span id="lb-health" style="font-size:11px; color:#666;">checking…</span>
         </div>
         <div id="leaderboardWrap" style="display:block; margin-top:8px;">
-          <h3 style="margin:8px 0 6px; font-size:16px;">Last Human Finishers</h3>
+          <h3 style="margin:8px 0 6px; font-size:16px;">Room Summary</h3>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:200px;">
-              <ul id="lb-last-humans" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
+            <div style="flex:1; min-width:260px;">
+              <ul id="lb-room-summary" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
             </div>
           </div>
           <div id="lb-note" style="font-size:11px; color:#666; margin-top:6px;">Note: Requires DB; empty if not configured.</div>
@@ -87,14 +87,17 @@
       try { const r = await fetch(url); return await r.json(); } catch { return { items: [] }; }
     }
     async function refreshLeaderboards() {
-      const lastHumans = await fetchJSON('/api/leaderboard/last-humans');
-      const ul = document.getElementById('lb-last-humans');
+      const room = (window.MP && MP.room) ? `?room=${encodeURIComponent(MP.room)}` : '';
+      const data = await fetchJSON(`/api/leaderboard/room-summary${room}`);
+      const ul = document.getElementById('lb-room-summary');
       ul.innerHTML = '';
-      (lastHumans.items || []).forEach(it => {
+      (data.items || []).forEach(it => {
         const li = document.createElement('li');
-        const time = typeof it.time === 'number' ? `${(+it.time).toFixed(2)}s` : `${it.time}`;
-        const when = it.ts ? new Date(it.ts).toLocaleString() : '';
-        li.textContent = `${it.username} — ${time} (last among humans, ${when})`;
+        const lastWinTs = it.last_win_ts ? new Date(it.last_win_ts).toLocaleString() : '—';
+        const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
+        const lastWinSec = typeof it.last_win_seconds === 'number' ? `${(+it.last_win_seconds).toFixed(2)}s` : '—';
+        const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
+        li.textContent = `${it.username} — wins: ${it.wins}, last places: ${it.last_places}, last win: ${lastWinSec} (${lastWinTs}), last last: ${lastLastSec} (${lastLastTs})`;
         ul.appendChild(li);
       });
     }
