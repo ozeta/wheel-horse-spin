@@ -19,6 +19,19 @@ const http = require('http');
 const express = require('express');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const { execSync } = require('child_process');
+
+// Get commit SHA at startup (fallback if git not available or not a git repo)
+let COMMIT_SHA = 'unknown';
+try {
+  COMMIT_SHA = execSync('git rev-parse --short HEAD', {
+    cwd: __dirname,
+    stdio: ['pipe', 'pipe', 'pipe']
+  }).toString().trim();
+} catch (err) {
+  // Git not installed, not a git repo, or other error - use env var or timestamp
+  COMMIT_SHA = process.env.COMMIT_SHA || `build-${Date.now()}`;
+}
 
 // --- Constants ---
 const INPUT_KEY = 'E';
@@ -28,21 +41,22 @@ const TOTAL_LANES = 8;
 const COUNTDOWN_SECONDS = 1;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
-const BOOST_FACTOR = 1.4;
+const BOOST_FACTOR = 2.0; // increased from 1.4 for more noticeable boost
 // Motion tuning: when not boosting, players decelerate toward an idle speed.
 // Accel/decel rates are in progress-per-second change per second (applied over dt).
 const IDLE_SPEED_FACTOR = Number(process.env.IDLE_SPEED_FACTOR ?? 0.6); // vs base
-const ACCELERATION_RATE = Number(process.env.ACCELERATION_RATE ?? 0.12); // per sec
+const ACCELERATION_RATE = Number(process.env.ACCELERATION_RATE ?? 0.25); // per sec - increased from 0.12 for faster boost response
 const DECELERATION_RATE = Number(process.env.DECELERATION_RATE ?? 0.20); // per sec
 // Bot-specific motion tuning
 // Make bot base speed equal to player start (idle) speed by default
 const BOT_IDLE_SPEED_FACTOR = Number(process.env.BOT_IDLE_SPEED_FACTOR ?? IDLE_SPEED_FACTOR);
-const BOT_ACCELERATION_RATE = Number(process.env.BOT_ACCELERATION_RATE ?? 0.10);
+const BOT_ACCELERATION_RATE = Number(process.env.BOT_ACCELERATION_RATE ?? 0.25);
 const BOT_DECELERATION_RATE = Number(process.env.BOT_DECELERATION_RATE ?? 0.22);
 const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.15); // increased from 0.1
 const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.8); // increased from 0.7
+
 const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
-const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 100);
+const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 50);
 const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_DURATION_MS ?? 2000);
 
 // Base motion constants (should match client)
@@ -218,6 +232,11 @@ const app = express();
 // Serve static files from parent directory (repo root)
 const staticPath = path.join(__dirname, '..');
 app.use(express.static(staticPath));
+
+// API endpoint to get current commit SHA (cached at startup)
+app.get('/api/commit', (req, res) => {
+  res.json({ sha: COMMIT_SHA });
+});
 
 // Fallback: serve game.html as default
 app.get('/', (req, res) => {

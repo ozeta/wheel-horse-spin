@@ -76,6 +76,18 @@ window.addEventListener('DOMContentLoaded', () => {
     connectMP();
   }
 
+  // Fetch and display commit SHA
+  fetch('/api/commit')
+    .then(res => res.json())
+    .then(data => {
+      const shaEl = document.getElementById('commitSha');
+      if (shaEl) shaEl.textContent = `commit: ${data.sha}`;
+    })
+    .catch(() => {
+      const shaEl = document.getElementById('commitSha');
+      if (shaEl) shaEl.textContent = 'commit: unknown';
+    });
+
   // Keyboard boost listeners
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
