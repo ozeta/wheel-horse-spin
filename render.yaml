@@ -20,7 +20,6 @@ services:
     runtime: static
     rootDir: .
     plan: free
-    region: oregon
     autoDeploy: true
     buildCommand: ""
     staticPublishPath: .

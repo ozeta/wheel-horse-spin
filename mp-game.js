@@ -452,8 +452,13 @@ function draw() {
   // Countdown overlay text in header already handled; show phase label subtle corner
   // Phase label removed per request
   if (MP.phase === 'results') {
-    fill(255); textAlign(CENTER, CENTER); textSize(22);
-    text('Race complete', width/2, height - 40);
+    textAlign(CENTER, CENTER);
+    textSize(48);
+    stroke(0);
+    strokeWeight(4);
+    fill(255);
+    text('Race complete', width/2, height/2);
+    noStroke();
   }
   // Draw boost notification if active
   if (_boostNotice && (millis() - _boostNotice.ts) < _boostNotice.durationMs) {
