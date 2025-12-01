@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: wheel-horse-spin-mp-server
+    runtime: node
+    rootDir: multiplayer-race
+    plan: free
+    region: oregon
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: dev
+      - key: PORT
+        value: 8080
