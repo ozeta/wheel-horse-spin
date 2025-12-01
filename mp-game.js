@@ -478,36 +478,58 @@ function draw() {
     text('Race complete', width/2, height/2);
     noStroke();
   }
-  // Draw boost notification if active
-  if (_boostNotice && (millis() - _boostNotice.ts) < _boostNotice.durationMs) {
-    const alpha = 255 * (1 - (millis() - _boostNotice.ts) / _boostNotice.durationMs);
-    fill(0, 0, 0, 120);
-    noStroke();
-    rectMode(CENTER);
-    rect(width/2, 40, 220, 30, 8);
-    fill(255, alpha);
-    textAlign(CENTER, CENTER);
-    textSize(16);
-    text(_boostNotice.text, width/2, 40);
-  }
+  // Boost notification disabled - removed tooltip display
 
   // Draw player speed and acceleration during race
   if (MP.phase === 'race') {
     const me = trackObjects.find(o => o.id === MP.clientId);
     if (me && typeof me.currentSpeed === 'number') {
-      const speed = me.currentSpeed.toFixed(3);
-      const accel = (me.currentAccel || 0).toFixed(3);
+      const speed = Math.round(me.currentSpeed * 1000);
+      const accel = (me.currentAccel || 0) * 1000;
+
+      // Background panel
       fill(0, 0, 0, 160);
       noStroke();
       rectMode(CENTER);
-      rect(width/2, height/2, 280, 70, 8);
+      rect(width/2, height/2, 280, 90, 8);
+
+      // Speed text
       fill(255);
       textAlign(CENTER, CENTER);
       textStyle(BOLD);
       textSize(18);
-      text(`Speed: ${speed}`, width/2, height/2 - 12);
-      textSize(14);
-      text(`Acceleration: ${accel}`, width/2, height/2 + 12);
+      text(`Speed: ${speed}`, width/2, height/2 - 20);
+
+      // Acceleration meter bar
+      textSize(12);
+      textStyle(NORMAL);
+      text(`Acceleration`, width/2, height/2 + 8);
+
+      // Bar background
+      const barWidth = 200;
+      const barHeight = 12;
+      const barX = width/2 - barWidth/2;
+      const barY = height/2 + 20;
+      rectMode(CORNER);
+      fill(60);
+      rect(barX, barY, barWidth, barHeight, 4);
+
+      // Bar fill (map acceleration to bar width, clamp to reasonable range)
+      const maxAccel = 50; // adjust based on typical values
+      const accelRatio = Math.max(-1, Math.min(1, accel / maxAccel));
+      const fillWidth = Math.abs(accelRatio) * (barWidth / 2);
+      const centerX = barX + barWidth / 2;
+
+      if (accelRatio > 0) {
+        // Positive acceleration (green, right side from center)
+        fill(100, 255, 100);
+        rect(centerX, barY, fillWidth, barHeight, 4);
+      } else if (accelRatio < 0) {
+        // Negative acceleration (red, left side from center)
+        fill(255, 100, 100);
+        rect(centerX - fillWidth, barY, fillWidth, barHeight, 4);
+      }
+
       textStyle(NORMAL);
     }
   }

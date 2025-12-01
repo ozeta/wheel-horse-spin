@@ -55,7 +55,7 @@ const BOT_DECELERATION_RATE = Number(process.env.BOT_DECELERATION_RATE ?? 0.22);
 const BOT_BOOST_PROB_PER_TICK = Number(process.env.BOT_BOOST_PROB_PER_TICK ?? 0.15); // increased from 0.1
 const BOT_BOOST_ENABLE_PROB = Number(process.env.BOT_BOOST_ENABLE_PROB ?? 0.8); // increased from 0.7
 
-const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 75);
+const BOOST_MAX_DURATION_MS = Number(process.env.BOOST_MAX_DURATION_MS ?? 300); // Max boost hold time
 const BOOST_COOLDOWN_MS = Number(process.env.BOOST_COOLDOWN_MS ?? 50);
 const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_DURATION_MS ?? 2000);
 
