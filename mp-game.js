@@ -17,7 +17,7 @@ const MP = {
 };
 
 // DOM references
-let displayServer, displayRoom, connectBtn, readyBtn, startBtn,
+let displayServer, displayRoom, connectBtn, readyBtn, startBtn, resetBtn,
     playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
     raceOverlay, lobbySection, resultsWrap, finalList;
 // Config captured from URL or defaults
@@ -34,6 +34,7 @@ window.addEventListener('DOMContentLoaded', () => {
   connectBtn = document.getElementById('connectBtn');
   readyBtn = document.getElementById('readyBtn');
   startBtn = document.getElementById('startBtn');
+  resetBtn = document.getElementById('resetBtn');
   playerListUL = document.getElementById('player-list');
   statusDiv = document.getElementById('status');
   countdownHeader = document.getElementById('countdownHeader');
@@ -69,6 +70,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (connectBtn) connectBtn.addEventListener('click', connectMP);
   readyBtn.addEventListener('click', toggleReady);
   startBtn.addEventListener('click', startGame); // host only
+  resetBtn.addEventListener('click', resetGame); // host only
   renameBtn.addEventListener('click', doRename);
 
   // Auto-connect if both room and name provided in URL
@@ -196,9 +198,17 @@ function handleMessage(msg) {
 
 function updateButtons() {
   const isHost = MP.clientId === MP.hostId;
-  startBtn.style.display = isHost ? 'block' : 'none';
-  startBtn.disabled = !(isHost && MP.phase === 'lobby');
   const me = MP.players.find(p => p.id === MP.clientId);
+  const allReady = MP.players.every(p => p.ready);
+
+  // Show start button only in lobby phase, reset button only in results phase
+  startBtn.style.display = isHost && MP.phase === 'lobby' ? 'block' : 'none';
+  // Enable start button only when all players (including single player) are ready
+  startBtn.disabled = !(isHost && MP.phase === 'lobby' && allReady);
+
+  resetBtn.style.display = isHost && MP.phase === 'results' ? 'block' : 'none';
+  resetBtn.disabled = !(isHost && MP.phase === 'results');
+
   if (me) {
     readyBtn.textContent = me.ready ? 'Unready' : 'Ready to Start';
     // Disable rename while marked ready
@@ -234,6 +244,12 @@ function startGame() {
   if (!MP.ws) return;
   if (MP.clientId !== MP.hostId) return;
   MP.ws.send(JSON.stringify({ type: 'startGame' }));
+}
+
+function resetGame() {
+  if (!MP.ws) return;
+  if (MP.clientId !== MP.hostId) return;
+  MP.ws.send(JSON.stringify({ type: 'resetGame' }));
 }
 
 function doRename() {
@@ -487,47 +503,45 @@ function draw() {
       const speed = Math.round(me.currentSpeed * 1000);
       const accel = (me.currentAccel || 0) * 1000;
 
-      // Background panel
+      // Background panel (increased height for key instruction)
       fill(0, 0, 0, 160);
       noStroke();
       rectMode(CENTER);
-      rect(width/2, height/2, 280, 90, 8);
+      rect(width/2, height/2, 280, 110, 8);
 
-      // Speed text
+      // Key instruction at top
       fill(255);
       textAlign(CENTER, CENTER);
+      textSize(14);
+      textStyle(NORMAL);
+      text(`Press [${INPUT_KEY}] to boost`, width/2, height/2 - 35);
+
+      // Speed text
       textStyle(BOLD);
       textSize(18);
-      text(`Speed: ${speed}`, width/2, height/2 - 20);
+      text(`Speed: ${speed}`, width/2, height/2 - 10);
 
-      // Acceleration meter bar
+      // Acceleration meter bar (only show when positive)
       textSize(12);
       textStyle(NORMAL);
-      text(`Acceleration`, width/2, height/2 + 8);
+      text(`Acceleration`, width/2, height/2 + 18);
 
       // Bar background
       const barWidth = 200;
       const barHeight = 12;
       const barX = width/2 - barWidth/2;
-      const barY = height/2 + 20;
+      const barY = height/2 + 30;
       rectMode(CORNER);
       fill(60);
       rect(barX, barY, barWidth, barHeight, 4);
 
-      // Bar fill (map acceleration to bar width, clamp to reasonable range)
-      const maxAccel = 50; // adjust based on typical values
-      const accelRatio = Math.max(-1, Math.min(1, accel / maxAccel));
-      const fillWidth = Math.abs(accelRatio) * (barWidth / 2);
-      const centerX = barX + barWidth / 2;
-
-      if (accelRatio > 0) {
-        // Positive acceleration (green, right side from center)
+      // Bar fill (only show positive acceleration)
+      if (accel > 0) {
+        const maxAccel = 50; // adjust based on typical values
+        const accelRatio = Math.min(1, accel / maxAccel);
+        const fillWidth = accelRatio * barWidth;
         fill(100, 255, 100);
-        rect(centerX, barY, fillWidth, barHeight, 4);
-      } else if (accelRatio < 0) {
-        // Negative acceleration (red, left side from center)
-        fill(255, 100, 100);
-        rect(centerX - fillWidth, barY, fillWidth, barHeight, 4);
+        rect(barX, barY, fillWidth, barHeight, 4);
       }
 
       textStyle(NORMAL);

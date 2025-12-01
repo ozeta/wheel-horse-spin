@@ -39,6 +39,7 @@ const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 8;
 const COUNTDOWN_SECONDS = 1;
+const AUTOSTART_ENABLED = false; // disable auto-start when all players ready
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 2.0; // increased from 1.4 for more noticeable boost
@@ -183,6 +184,11 @@ function startRace(room) {
 
 function endRace(room, results) {
   room.phase = 'results';
+  // Reset all players to unready
+  room.players.forEach(p => {
+    p.ready = false;
+  });
+  room.readySet.clear();
   // Try to derive winner id from results if present
   let winnerId = null;
   try {
@@ -282,18 +288,23 @@ wss.on('connection', (ws, req) => {
         player.ready = !!msg.ready;
         if (player.ready) room.readySet.add(player.id); else room.readySet.delete(player.id);
         broadcast(room, roomStatePayload(room));
-        // auto-start if all ready and >=2 players
-        const readyCount = Array.from(room.players.values()).filter(p=>p.ready).length;
-        if (readyCount >= Math.max(DEFAULT_PLAYERS, 2) && readyCount === room.players.size && room.phase === 'lobby') {
-          startCountdown(room);
-          setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
+        // auto-start if enabled and all ready and >=2 players
+        if (AUTOSTART_ENABLED) {
+          const readyCount = Array.from(room.players.values()).filter(p=>p.ready).length;
+          if (readyCount >= Math.max(DEFAULT_PLAYERS, 2) && readyCount === room.players.size && room.phase === 'lobby') {
+            startCountdown(room);
+            setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
+          }
         }
         break;
       }
       case 'startGame': {
         if (room.hostId !== player.id) break;
         const playerCount = room.players.size;
-        if (playerCount >= 1 && room.phase === 'lobby') {
+        const readyCount = Array.from(room.players.values()).filter(p=>p.ready).length;
+        // Allow host to start if: single player OR all players ready
+        const canStart = (playerCount === 1) || (readyCount === playerCount);
+        if (playerCount >= 1 && canStart && room.phase === 'lobby') {
           startCountdown(room);
           setTimeout(() => startRace(room), COUNTDOWN_SECONDS * 1000);
         }
@@ -332,6 +343,32 @@ wss.on('connection', (ws, req) => {
           room.phase = 'lobby';
           stopTick(room);
           broadcast(room, roomStatePayload(room));
+        }
+        break;
+      }
+      case 'resetGame': {
+        if (room.hostId !== player.id) break;
+        if (room.phase === 'results') {
+          // Reset all players to unready and clear race state
+          room.players.forEach(p => {
+            p.ready = false;
+            p.progress = 0;
+            p.currentSpeed = 0;
+            p.finished = false;
+            p.fullyFinished = false;
+            p.finishSeconds = null;
+            p.finishDecelStartMs = null;
+            p.finishSpeed = null;
+            p.boostDown = false;
+            p.boostSinceMs = null;
+            p.lastBoostStartMs = null;
+            p.lastBoostEndMs = null;
+          });
+          room.readySet.clear();
+          room.phase = 'lobby';
+          stopTick(room);
+          broadcast(room, roomStatePayload(room));
+          console.log(`[room:${room.id}] game reset by host`);
         }
         break;
       }
