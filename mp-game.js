@@ -156,7 +156,7 @@ function handleMessage(msg) {
     case 'tick':
       if (MP.phase === 'countdown' && MP.countdownEndsAt) {
         const remaining = Math.max(0, Math.round((MP.countdownEndsAt - Date.now()) / 1000));
-        countdownHeader.textContent = `Countdown: ${remaining}s`;
+        countdownHeader.textContent = `Countdown: ${remaining}s (Boost key: ${displayBoostKey(currentBoostKey)})`;
       }
       if (MP.phase === 'race') {
         if (msg.players) syncRaceProgress(msg.players);
@@ -588,7 +588,8 @@ function draw() {
       fill(0, 0, 0, 160);
       noStroke();
       rectMode(CENTER);
-      rect(width/2, height/2, 280, 110, 8);
+      // HUD panel enlarged by ~10%
+      rect(width/2, height/2, 308, 121, 8);
 
       // Key instruction at top (flash when key just rotated)
       if (performance.now() < keyFlashUntil) {
@@ -597,7 +598,8 @@ function draw() {
         fill(255);
       }
       textAlign(CENTER, CENTER);
-      textSize(14);
+      // Increase boost key instruction label size by ~20%
+      textSize(18);
       textStyle(NORMAL);
       const msRemaining = Math.max(0, nextKeyChangeAt - performance.now());
       const secRemaining = Math.ceil(msRemaining / 1000);
