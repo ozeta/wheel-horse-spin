@@ -6,9 +6,10 @@ Keep responses focused on existing patterns – do not introduce frameworks or b
 ## Overview
 Two modes:
 1. Single-page browser race (HTML/CSS/JS + p5.js) – local horses.
-2. Multiplayer WebSocket server (`multiplayer-race/`) – lobby → countdown → race → results with bots auto-filling lanes.
+2. Multiplayer WebSocket server (`multiplayer-race/`) – lobby → countdown → race → results; bots auto-fill lanes.
 
 Framework-free; no build step. Keep additions minimal and consistent.
+CI workflows live in `.github/workflows/` (CI, OpenAPI lint, DB migration smoke, CodeQL, dependency review, npm audit).
 
 ## Key Files
 Single-player:
@@ -21,6 +22,9 @@ Multiplayer:
 - `multiplayer-race/db/migrate.js` / `seed.js` – schema + demo data.
 - `multiplayer-race/openapi.yaml` – REST contract.
 - `thin-client.js` – scripted player simulation.
+Docs:
+- `multiplayer-race/api-docs.html` – Swagger UI for `openapi.yaml`.
+- `readme.md` / `multiplayer-race/README.md` – gameplay, server usage.
 
 ## State & Data Model
 Single-player:
@@ -29,13 +33,14 @@ Multiplayer:
 - Rooms keyed by id; per-room `players` (Map), `bots[]` (fill lanes), phases: `lobby` | `countdown` | `race` | `results`.
 - Server tracks per-player progress, boost state, finish + deceleration completion.
 - Database (optional) stores `races` + `race_participants` with human/bot flags & last-human markers.
+	- DB setup scripts: run migrations + seed; CI smoke test provisions ephemeral Postgres.
 
 ## Race Geometry & Rendering
 Shared oval track logic: alternating lanes, finish rectangle. Multiplayer client downsizes complexity vs single-player but reuses lane mapping & avatar seeding.
 - Geometry recalculated each frame (`calculateTrackGeometry`) – depends on canvas size and lane count.
 - Track: Two semicircle arcs joined by straights (derived from outer rectangle minus arc diameter). Lane width is uniform.
 - Alternating lane colors; divider lines drawn atop.
-- Finish line: Red rectangle at left straight; width controlled by `FINISH_LINE_WIDTH`.
+- Finish line: Chessboard rectangle on left straight; width `FINISH_LINE_WIDTH`.
 - Horse position computed by segment mapping of perimeter distance (top straight → right arc → bottom straight → left arc).
 
 ## Lifecycle & Timing
@@ -46,6 +51,7 @@ Multiplayer: lobby ready gating → short `COUNTDOWN_SECONDS` → server-driven 
 3. Deceleration: Linear speed drop over `DECELERATION_DURATION_MS`; horse continues moving (progress keeps increasing past official finish distance) until speed reaches 0.
 4. Completion: `checkRaceCompletion()` only ends race when every horse is `finished` AND `decelerating` phase ended (speed == 0).
 5. Timing excludes paused durations (`pausedAccumulatedMillis`). Winner time = earliest finishSeconds; total duration = latest finishSeconds.
+Multiplayer countdown overlay appears; server is authoritative for progress and finish times.
 
 ## Leaderboards & Overlay
 Single-player: live + final leaderboard overlay.
@@ -53,6 +59,7 @@ Multiplayer: REST endpoints supply aggregated stats (fastest, top wins, last hum
 - Live leaderboard: Sorted finished (by finish time asc) then unfinished (by progress descending). Displays finish time or ellipsis for unfinished, marks top 3 with gold/silver/copper bullet.
 - Final leaderboard: After race end; rank by finish time; columns Rank | Name | Time (with tie) | +Delta. Top 3 colored, tie flagged on equal winnerTime.
 - Winner overlay: Trophy emoji, winner time, total race duration, tie indicator.
+ YAML stats panel: Copy button with hover/click states; emits `stats:` list from `horseStats`.
 
 ## Constants
 Single-player: adjust in `sketch.js`.
@@ -62,6 +69,7 @@ Multiplayer: constants dispatched via `roomState` / `raceStart` (`INPUT_KEY`, `C
 - `AVATAR_SIZE_FACTOR`: Size multiplier vs lane width.
 - `DECELERATION_DURATION_MS`: Coast duration after finish line crossing.
 - `FINISH_LINE_WIDTH`: Horizontal width of finish rectangle.
+Multiplayer dispatches constants via `roomState`/`raceStart`; client rotates boost key.
 
 ## Pause Behavior
 Single-player only (`paused` state). Multiplayer does not pause mid-race; state machine is linear.
@@ -80,6 +88,7 @@ Multiplayer additions:
 - New per-horse attributes: Extend object creation in `initializeHorseObjects()`; avoid mutating `horses` (persisted) – use `horseObjects` for runtime fields.
 - Race logic changes: Modify `updateHorses()` (motion) or `checkRaceCompletion()` (finish criteria) – keep separation.
 - Rendering add-ons: Inject into `draw()` respecting game state gating (avoid expensive work outside racing/finished states).
+ - Multiplayer client build: no bundler; keep pure JS/p5.js; avoid frame-fetch loops.
 
 ## Do / Don’t
 - DO keep everything framework-free (no build steps).
@@ -97,6 +106,8 @@ Multiplayer:
 - Export CSV: Build array from `horseObjects` after `finished` state; derive delta = finishSeconds - winnerTime.
 - Alternate deceleration curve: Replace linear `(1 - t)` with easing (e.g. `1 - t*t`).
 - Responsive scaling: Adjust `LANE_WIDTH` based on `width` before geometry calc.
+CI/Docs:
+- Add workflow badges to `readme.md` if needed; keep `openapi.yaml` valid (Redocly lint passes).
 
 ## Quick Reference (Typical Hooks)
 Single-player:
@@ -111,6 +122,7 @@ Multiplayer:
 - Finish compile: `endRace(room, results)` → DB persist
 - Client progress smoothing: interpolation in `syncRaceProgress()`
 - Dynamic boost key: rotation functions in `mp-game.js`
+ - HUD overlays: countdown + key hint; audio cue; flash window.
 
 ## Dynamic Boost Key (Multiplayer)
 - Rotation interval: 3000ms
@@ -126,9 +138,20 @@ See `multiplayer-race/openapi.yaml`.
 - `/api/leaderboard/last-humans`
 - `/api/leaderboard/room-summary?room=ID`
 - `/api/leaderboard/room-loses?room=ID`
+Swagger UI: open `multiplayer-race/api-docs.html` locally; set spec URL to `openapi.yaml`.
 
 ## Database Schema (Delta)
 `race_participants` includes: `is_last_human`, `human_final_position`, `human_finish_time_seconds` for last-place & human-only stats.
+CI smoke test runs `db/migrate.js` and `db/seed.js` against ephemeral Postgres (`DATABASE_URL`).
+
+## Developer Workflows
+- Local single-player: open `index.html` in a browser.
+- Local multiplayer server: in `multiplayer-race` run:
+	- `npm ci`
+	- `npm start` (or `node server.js`); set `DATABASE_URL` if using Postgres.
+	- Seed data: `npm run db:seed`.
+- Render deployment: see `readme.md` for live link and hosting notes.
+- CI: workflows auto-run on push/PR; fix failing lint/migration/audit in `multiplayer-race/`.
 
 Clarify any missing conventions or request expansion before implementing big changes.
 
