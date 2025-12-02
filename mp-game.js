@@ -299,6 +299,12 @@ function setup() {
   c.parent(canvasContainer);
   frameRate(60);
   buildTrackObjectsFromPlayers(); // initial (may be empty)
+  // Log avatar style once after p5 setup (game loaded)
+  try {
+    console.log('[WheelHorseSpin Multiplayer] Avatar style:', avatarStyle);
+    const sampleSeed = (MP.players && MP.players[0] && MP.players[0].username) || 'Sample';
+    console.log('[WheelHorseSpin Multiplayer] Sample avatar URL:', `https://api.dicebear.com/8.x/${avatarStyle}/svg?seed=${encodeURIComponent(sampleSeed)}`);
+  } catch (e) {}
 }
 
 function windowResized() {

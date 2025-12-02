@@ -7,38 +7,6 @@
   <!-- <meta name="mp-server-url" content="wss://your-backend.onrender.com" /> -->
   <title>Wheel Horse Spin Multiplayer</title>
   <link rel="stylesheet" href="style.css" />
-  <style>
-    body { display:flex; flex-direction:column; font-family:Arial,sans-serif; }
-    header { padding:5px 8px; background:#222; color:#fff; }
-    main { display:flex; flex:1; min-height:0; }
-    #lobby { width:380px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; position:relative; }
-    /* Scroll fade cues */
-    #lobby::before, #lobby::after {
-      content:''; position:sticky; left:0; right:0; display:block; height:14px; pointer-events:none; z-index:1;
-    }
-    #lobby::before { top:0; background:linear-gradient(to bottom, rgba(0,0,0,0.12), rgba(0,0,0,0)); }
-    #lobby::after { bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.12), rgba(0,0,0,0)); }
-    /* Hide fades when at edges */
-    #lobby.at-top::before { opacity:0; }
-    #lobby.at-bottom::after { opacity:0; }
-    #lobby h2 { margin:0 0 10px; font-size:20px; }
-    #player-list { list-style:none; padding:0; margin:0; }
-    #player-list li { padding:6px 8px; border:1px solid #ccc; border-radius:6px; margin-bottom:6px; background:#fff; font-size:13px; }
-    #status { font-size:12px; margin-top:6px; color:#333; }
-    #countdownDisplay { font-size:22px; font-weight:bold; margin:10px 0; }
-    #raceCanvasWrap { flex:1 1 0%; position:relative; min-width: 0; }
-    #canvas-container { position:absolute; inset:0; }
-    /* Ensure some minimum height so canvas is visible even if content is sparse */
-    #raceCanvasWrap { min-height: 420px; }
-    /* Enforce minimum canvas container width for stable aspect */
-    #raceCanvasWrap { min-width: 1152px; overflow: auto; }
-    /* For 16:9, minimum height ~720px; canvas sizing code already preserves aspect */
-    #canvas-container { min-height: 720px; }
-    #renameWrap { display:flex; gap:6px; margin-top:6px; }
-    #renameWrap input { flex:1; padding:4px; }
-    button { cursor:pointer; }
-    #raceOverlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.55); color:#fff; font-size:46px; font-weight:bold; }
-  </style>
 </head>
 <body>
   <header><h1>Wheel Horse Spin Multiplayer</h1></header>
