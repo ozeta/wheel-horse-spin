@@ -151,6 +151,7 @@ function handleMessage(msg) {
       MP.phase = 'race'; countdownHeader.style.display = 'none'; raceOverlay.style.display = 'none';
       buildTrackObjectsFromPlayers(); // ensure roster locked for race
       if (lobbySection) lobbySection.style.display = 'none';
+      initDynamicBoost();
       break;
     case 'tick':
       if (MP.phase === 'countdown' && MP.countdownEndsAt) {
@@ -290,6 +291,51 @@ const AVATAR_STYLES = [
   'fun-emoji', 'lorelei', 'micah', 'miniavs', 'open-peeps', 'personas', 'pixel-art'
 ];
 let avatarStyle = AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)];
+
+// --- Dynamic Boost Key Rotation (client-side only) ---
+// Rotate every 3s among WASDQEZXC + Space. Includes countdown, sound cue, flash.
+const BOOST_KEYS = ['W','A','S','D','Q','E','Z','X','C',' '];
+const BOOST_KEY_INTERVAL_MS = 3000;
+let currentBoostKey = 'E';
+let nextKeyChangeAt = 0; // performance.now() timestamp for next change
+let lastBoostKey = null;
+let keyFlashUntil = 0; // highlight flash end timestamp
+let _boostDown = false; // moved earlier to allow rotation-induced release
+let _boostNotice = null; // { text, ts, durationMs }
+
+function displayBoostKey(k) { return k === ' ' ? 'Space' : k; }
+
+function playBoostKeyCue() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880; // A5 beep
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.25);
+  } catch {}
+}
+
+function rotateBoostKey() {
+  const candidates = BOOST_KEYS.filter(k => k !== currentBoostKey);
+  const idx = Math.floor(Math.random() * candidates.length);
+  lastBoostKey = currentBoostKey;
+  currentBoostKey = candidates[idx] || currentBoostKey;
+  nextKeyChangeAt = performance.now() + BOOST_KEY_INTERVAL_MS;
+  keyFlashUntil = performance.now() + 600; // flash ~600ms
+  playBoostKeyCue();
+  // Release boost if held when key changes to avoid stuck boost
+  if (_boostDown) {
+    _boostDown = false;
+    try { if (MP.ws) MP.ws.send(JSON.stringify({ type: 'pressBoost', down: false, atClientMs: Date.now(), reason: 'keyRotated' })); } catch {}
+  }
+  try { console.log('[DynamicBoost] New boost key:', displayBoostKey(currentBoostKey)); } catch {}
+}
+
+function initDynamicBoost() { rotateBoostKey(); }
 
 function setup() {
   const canvasContainer = document.getElementById('canvas-container');
@@ -532,6 +578,7 @@ function draw() {
 
   // Draw player speed and acceleration during race
   if (MP.phase === 'race') {
+    if (performance.now() >= nextKeyChangeAt) rotateBoostKey();
     const me = trackObjects.find(o => o.id === MP.clientId);
     if (me && typeof me.currentSpeed === 'number') {
       const speed = Math.round(me.currentSpeed * 1000);
@@ -543,12 +590,18 @@ function draw() {
       rectMode(CENTER);
       rect(width/2, height/2, 280, 110, 8);
 
-      // Key instruction at top
-      fill(255);
+      // Key instruction at top (flash when key just rotated)
+      if (performance.now() < keyFlashUntil) {
+        fill(255, 255, 0);
+      } else {
+        fill(255);
+      }
       textAlign(CENTER, CENTER);
       textSize(14);
       textStyle(NORMAL);
-      text(`Press [${INPUT_KEY}] to boost`, width/2, height/2 - 35);
+      const msRemaining = Math.max(0, nextKeyChangeAt - performance.now());
+      const secRemaining = Math.ceil(msRemaining / 1000);
+      text(`Press [${displayBoostKey(currentBoostKey)}] to boost (${secRemaining}s)`, width/2, height/2 - 35);
 
       // Speed text
       textStyle(BOLD);
@@ -583,14 +636,13 @@ function draw() {
   }
 }
 
-// --- Boost Controls & Notification ---
-const INPUT_KEY = (MP && MP.constants && MP.constants.INPUT_KEY) ? MP.constants.INPUT_KEY : 'E';
-let _boostDown = false;
-let _boostNotice = null; // { text, ts, durationMs }
-
+// --- Boost Controls & Notification (dynamic key variant) ---
 function onKeyDown(e) {
   if (MP.phase !== 'race' || !MP.ws) return;
-  if (e.key.toUpperCase() === INPUT_KEY && !_boostDown) {
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+  const key = (e.key === ' ' || e.code === 'Space') ? ' ' : e.key.toUpperCase();
+  if (key === currentBoostKey && !_boostDown) {
     _boostDown = true;
     MP.ws.send(JSON.stringify({ type: 'pressBoost', down: true, atClientMs: Date.now() }));
   }
@@ -598,7 +650,8 @@ function onKeyDown(e) {
 
 function onKeyUp(e) {
   if (!MP.ws) return;
-  if (e.key.toUpperCase() === INPUT_KEY && _boostDown) {
+  const key = (e.key === ' ' || e.code === 'Space') ? ' ' : e.key.toUpperCase();
+  if (key === currentBoostKey && _boostDown) {
     _boostDown = false;
     MP.ws.send(JSON.stringify({ type: 'pressBoost', down: false, atClientMs: Date.now() }));
   }
