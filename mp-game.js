@@ -276,6 +276,9 @@ function doRename() {
 // --- Track Rendering (adapted from single-player sketch) ---
 // --- Rendering Constants (tweak as desired) ---
 let trackGeometry = {};
+// Fixed aspect ratio for canvas (e.g., 16:9)
+const ASPECT_W = 16;
+const ASPECT_H = 9;
 const LANE_WIDTH = 40; // Lane thickness in pixels
 const AVATAR_SIZE_FACTOR = 0.8; // Avatar size relative to lane width
 const FINISH_LINE_WIDTH = 100; // Finish line chessboard width
@@ -291,8 +294,8 @@ let avatarStyle = AVATAR_STYLES[Math.floor(Math.random() * AVATAR_STYLES.length)
 function setup() {
   const canvasContainer = document.getElementById('canvas-container');
   if (!canvasContainer) return;
-  const rect = canvasContainer.getBoundingClientRect();
-  const c = createCanvas(rect.width, rect.height);
+  const { w, h } = computeCanvasSize(canvasContainer);
+  const c = createCanvas(w, h);
   c.parent(canvasContainer);
   frameRate(60);
   buildTrackObjectsFromPlayers(); // initial (may be empty)
@@ -301,9 +304,24 @@ function setup() {
 function windowResized() {
   const canvasContainer = document.getElementById('canvas-container');
   if (!canvasContainer) return;
-  const rect = canvasContainer.getBoundingClientRect();
-  resizeCanvas(rect.width, rect.height);
+  const { w, h } = computeCanvasSize(canvasContainer);
+  resizeCanvas(w, h);
   calculateTrackGeometry();
+}
+
+function computeCanvasSize(containerEl) {
+  const rect = containerEl.getBoundingClientRect();
+  const availW = Math.max(1, rect.width);
+  const availH = Math.max(1, rect.height);
+  const targetAspect = ASPECT_W / ASPECT_H;
+  // Fit within container while preserving aspect
+  let w = availW;
+  let h = Math.round(w / targetAspect);
+  if (h > availH) {
+    h = availH;
+    w = Math.round(h * targetAspect);
+  }
+  return { w, h };
 }
 
 function calculateTrackGeometry() {

@@ -10,17 +10,30 @@
   <style>
     body { display:flex; flex-direction:column; font-family:Arial,sans-serif; }
     header { padding:5px 8px; background:#222; color:#fff; }
-    main { display:flex; flex:1; }
-    #lobby { width:340px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; }
+    main { display:flex; flex:1; min-height:0; }
+    #lobby { width:380px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; position:relative; }
+    /* Scroll fade cues */
+    #lobby::before, #lobby::after {
+      content:''; position:sticky; left:0; right:0; display:block; height:14px; pointer-events:none; z-index:1;
+    }
+    #lobby::before { top:0; background:linear-gradient(to bottom, rgba(0,0,0,0.12), rgba(0,0,0,0)); }
+    #lobby::after { bottom:0; background:linear-gradient(to top, rgba(0,0,0,0.12), rgba(0,0,0,0)); }
+    /* Hide fades when at edges */
+    #lobby.at-top::before { opacity:0; }
+    #lobby.at-bottom::after { opacity:0; }
     #lobby h2 { margin:0 0 10px; font-size:20px; }
     #player-list { list-style:none; padding:0; margin:0; }
     #player-list li { padding:6px 8px; border:1px solid #ccc; border-radius:6px; margin-bottom:6px; background:#fff; font-size:13px; }
     #status { font-size:12px; margin-top:6px; color:#333; }
     #countdownDisplay { font-size:22px; font-weight:bold; margin:10px 0; }
-    #raceCanvasWrap { flex:1; position:relative; }
+    #raceCanvasWrap { flex:1 1 0%; position:relative; min-width: 0; }
     #canvas-container { position:absolute; inset:0; }
     /* Ensure some minimum height so canvas is visible even if content is sparse */
     #raceCanvasWrap { min-height: 420px; }
+    /* Enforce minimum canvas container width for stable aspect */
+    #raceCanvasWrap { min-width: 1152px; overflow: auto; }
+    /* For 16:9, minimum height ~720px; canvas sizing code already preserves aspect */
+    #canvas-container { min-height: 720px; }
     #renameWrap { display:flex; gap:6px; margin-top:6px; }
     #renameWrap input { flex:1; padding:4px; }
     button { cursor:pointer; }
@@ -56,14 +69,14 @@
         <div id="leaderboardWrap" style="display:block; margin-top:8px;">
           <h3 style="margin:8px 0 6px; font-size:16px;">Room Summary</h3>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:260px;">
-              <ul id="lb-room-summary" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
+            <div style="flex:1; min-width:320px;">
+              <div id="lb-room-summary" style="font-size:12px;"></div>
             </div>
           </div>
           <h4 style="margin:8px 0 4px; font-size:14px;">Most Last Places (Humans)</h4>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:260px;">
-              <ul id="lb-room-loses" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
+            <div style="flex:1; min-width:320px;">
+              <div id="lb-room-loses" style="font-size:12px;"></div>
             </div>
           </div>
           <div id="lb-note" style="font-size:11px; color:#666; margin-top:6px;">Note: Requires DB; empty if not configured.</div>
@@ -89,6 +102,154 @@
   <script src="config.js"></script>
   <script src="mp-game.js"></script>
   <script>
+    // Minimal table styles for leaderboards
+    const styleEl = document.createElement('style');
+    styleEl.textContent = `
+      .lb-table{width:100%;border-collapse:collapse}
+      .lb-table th,.lb-table td{border:1px solid #ddd;padding:6px}
+      .lb-table th{background:#f4f4f6;text-align:left}
+      .lb-table tr:nth-child(even){background:#ededed;}
+      .lb-num{text-align:right; width:1%; white-space:nowrap;}
+      .lb-rank{width:24px;text-align:right}
+      .lb-wins{width:36px; text-align:right;}
+      .lb-loses{width:36px; text-align:right;}
+      .lb-date{text-align:right;}
+      .lb-bar-chart{display:flex;align-items:flex-end;gap:8px;padding:16px 0 8px 0;min-height:120px;}
+      .lb-bar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
+      .lb-bar-rect{width:22px;min-height:2px;background:#888;border-radius:4px 4px 0 0;transition:height .2s;}
+      .lb-bar-label{font-size:11px;margin-top:4px;max-width:40px;word-break:break-all;text-align:center;}
+      .lb-bar-value{font-size:11px;color:#333;margin-bottom:2px;text-align:center;}
+      .lb-bar-chart-x{display:flex;gap:8px;justify-content:center;}
+      .lb-bar-chart-y{font-size:10px;color:#666;position:absolute;left:0;top:0;}
+      .lb-bar-chart-wrap{position:relative;}
+      .lb-bar-chart-link{font-size:11px;color:#0366d6;text-decoration:underline;cursor:pointer;margin-left:8px;}
+      .lb-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;z-index:9999;}
+      .lb-modal-content{background:#fff;padding:24px 18px 18px 18px;border-radius:8px;box-shadow:0 2px 16px rgba(0,0,0,0.18);min-width:340px;max-width:90vw;max-height:80vh;overflow:auto;}
+      .lb-modal-close{position:absolute;top:12px;right:18px;font-size:18px;color:#333;cursor:pointer;}
+    `;
+    document.head.appendChild(styleEl);
+
+    function renderRoomSummaryTable(items){
+      const container = document.getElementById('lb-room-summary');
+      if(!container) return;
+      if(!items || items.length===0){
+        container.innerHTML = '<p style="color:#666;font-style:italic">No summary data yet for this room.</p>';
+        return;
+      }
+      const fmtDDMMYY = (ts)=>{
+        if(!ts) return '—';
+        const d = new Date(ts);
+        const dd = String(d.getDate()).padStart(2,'0');
+        const mm = String(d.getMonth()+1).padStart(2,'0');
+        const yy = String(d.getFullYear()).slice(-2);
+        return `${dd}/${mm}/${yy}`;
+      };
+      const rows = items.map((it,idx)=>{
+        const lastWinDate = fmtDDMMYY(it.last_win_ts);
+        const lastPlaceDate = fmtDDMMYY(it.last_last_ts);
+        return `
+          <tr>
+            <td class="lb-rank">${idx+1}</td>
+            <td>${it.username}</td>
+            <td class="lb-loses">${it.last_places ?? 0}</td>
+            <td class="lb-date">${lastPlaceDate}</td>
+            <td class="lb-date">${lastWinDate}</td>
+            <td class="lb-wins">${it.wins ?? 0}</td>
+          </tr>`;
+      }).join('');
+      // Chart logic
+      const N = 8;
+      const sorted = [...items].sort((a,b)=>(b.last_places??0)-(a.last_places??0));
+      const topN = sorted.slice(0,N);
+      const maxLoses = Math.max(1,...topN.map(x=>x.last_places??0));
+        function barChartHTML(data){
+          return `<div class="lb-bar-chart-wrap">
+            <div class="lb-bar-chart">
+              ${data.map(it=>{
+                const label = (it.username||'').length > 5 ? it.username.slice(0,5)+'…' : it.username;
+                return `
+                  <div class="lb-bar">
+                    <div class="lb-bar-value">${it.last_places??0}</div>
+                    <div class="lb-bar-rect" style="height:${Math.round(80*(it.last_places??0)/maxLoses)+8}px"></div>
+                    <div class="lb-bar-label">${label}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>`;
+      }
+      // Modal logic
+      function showAllChart(){
+        const modal = document.createElement('div');
+        modal.className = 'lb-modal';
+        modal.innerHTML = `<div class="lb-modal-content" style="position:relative;">
+          <span class="lb-modal-close" title="Close">&times;</span>
+          <h4 style="margin:0 0 12px 0;">Loses Distribution (All Players)</h4>
+          ${barChartHTML(sorted)}
+        </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('.lb-modal-close').onclick = ()=>modal.remove();
+        modal.onclick = e=>{if(e.target===modal)modal.remove();};
+      }
+      // Add raw data link and chart below table
+      const room = (window.MP && window.MP.room) || new URLSearchParams(location.search).get('room') || 'dev';
+      container.innerHTML = `
+        <table class="lb-table" aria-label="Room Summary (Humans)">
+          <thead>
+            <tr>
+              <th class="lb-rank">#</th>
+              <th>Player</th>
+              <th class="lb-loses">Loses</th>
+              <th>Latest &quot;last place&quot;</th>
+              <th>Last Win</th>
+              <th class="lb-wins">Wins</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="margin:6px 0 0 0;font-size:11px;">
+          <a href="/api/leaderboard/room-summary?room=${encodeURIComponent(room)}" target="_blank" style="color:#0366d6;text-decoration:underline;">Raw data (JSON)</a>
+          <span class="lb-bar-chart-link" onclick="window.__showAllChart && window.__showAllChart()">Show all</span>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="font-size:12px;font-weight:bold;margin-bottom:2px;">Loses Distribution (Top ${N})</div>
+          ${barChartHTML(topN)}
+        </div>
+      `;
+      window.__showAllChart = showAllChart;
+    }
+
+    function renderRoomLosesTable(items){
+      const container = document.getElementById('lb-room-loses');
+      if(!container) return;
+      if(!items || items.length===0){
+        container.innerHTML = '<p style="color:#666;font-style:italic">No last-place data yet for this room.</p>';
+        return;
+      }
+      const rows = items.map((it,idx)=>{
+        const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
+        const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
+        return `
+          <tr>
+            <td class="lb-rank">${idx+1}</td>
+            <td>${it.username}</td>
+            <td class="lb-num">${it.last_places ?? 0}</td>
+            <td>last occurrence: ${lastLastSec} (${lastLastTs})</td>
+          </tr>`;
+      }).join('');
+      container.innerHTML = `
+        <table class="lb-table" aria-label="Most Last Places (Humans)">
+          <thead>
+            <tr>
+              <th class="lb-rank">#</th>
+              <th>Player</th>
+              <th class="lb-num">Last Places</th>
+              <th>Latest</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
     async function fetchJSON(url) {
       try { const r = await fetch(url); return await r.json(); } catch { return { items: [] }; }
     }
@@ -98,41 +259,11 @@
       const detectedRoom = (window.MP && MP.room) || urlParams.get('room') || 'dev';
       const room = `?room=${encodeURIComponent(detectedRoom)}`;
       const data = await fetchJSON(`/api/leaderboard/room-summary${room}`);
-      const ul = document.getElementById('lb-room-summary');
-      ul.innerHTML = '';
-      const summaryItems = data.items || [];
-      if (summaryItems.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = 'No summary data yet for this room.';
-        ul.appendChild(li);
-      }
-      summaryItems.forEach(it => {
-        const li = document.createElement('li');
-        const lastWinTs = it.last_win_ts ? new Date(it.last_win_ts).toLocaleString() : '—';
-        const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
-        const lastWinSec = typeof it.last_win_seconds === 'number' ? `${(+it.last_win_seconds).toFixed(2)}s` : '—';
-        const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
-        li.textContent = `${it.username} — wins: ${it.wins}, last places: ${it.last_places}, last win: ${lastWinSec} (${lastWinTs}), last last: ${lastLastSec} (${lastLastTs})`;
-        ul.appendChild(li);
-      });
+      renderRoomSummaryTable(data.items || []);
 
       // Fetch ordered loses leaderboard
       const losesData = await fetchJSON(`/api/leaderboard/room-loses${room}`);
-      const ulLoses = document.getElementById('lb-room-loses');
-      ulLoses.innerHTML = '';
-      const losesItems = losesData.items || [];
-      if (losesItems.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = 'No last-place data yet for this room.';
-        ulLoses.appendChild(li);
-      }
-      losesItems.forEach(it => {
-        const li = document.createElement('li');
-        const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
-        const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
-        li.textContent = `${it.username} — last places: ${it.last_places}, last occurrence: ${lastLastSec} (${lastLastTs})`;
-        ulLoses.appendChild(li);
-      });
+      renderRoomLosesTable(losesData.items || []);
     }
     window.addEventListener('DOMContentLoaded', () => {
       // Health check
@@ -157,6 +288,20 @@
         btn.style.cssText = 'margin-top:6px; font-size:11px; padding:4px 6px;';
         btn.addEventListener('click', () => refreshLeaderboards());
         wrap.appendChild(btn);
+      }
+      // Sidepanel fade visibility based on scroll position
+      const lobby = document.getElementById('lobby');
+      function updateLobbyFades(){
+        if(!lobby) return;
+        const atTop = lobby.scrollTop <= 0;
+        const atBottom = Math.ceil(lobby.scrollTop + lobby.clientHeight) >= lobby.scrollHeight;
+        lobby.classList.toggle('at-top', atTop);
+        lobby.classList.toggle('at-bottom', atBottom);
+      }
+      if (lobby) {
+        lobby.addEventListener('scroll', updateLobbyFades, { passive: true });
+        window.addEventListener('resize', updateLobbyFades);
+        setTimeout(updateLobbyFades, 0);
       }
     });
   </script>
