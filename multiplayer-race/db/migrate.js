@@ -1,5 +1,3 @@
-const { Pool } = require('pg');
-
 async function migrate(pool) {
   const client = await pool.connect();
   try {
