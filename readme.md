@@ -1,12 +1,22 @@
 # Wheel Horse Spin
 
-Play live: <https://ozeta.github.io/wheel-horse-spin/>
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-blue)](multiplayer-race/openapi.yaml)
+[![Status](https://img.shields.io/badge/Mode-Single--Player_+_Multiplayer-green)](#summary)
+
+Play single‑player: <https://ozeta.github.io/wheel-horse-spin/>
+
+Multiplayer server: run locally from `multiplayer-race/` (WebSocket + REST + optional Postgres persistence)
 
 ## Summary
 
-Wheel Horse Spin is a browser-based animated horse race built with plain HTML/CSS/JavaScript and p5.js. You add up to 10 horses, each rendered with a randomly chosen DiceBear avatar style per session. The race runs on a dynamically sized oval track whose geometry adapts to the canvas. All horses complete the race; their finish times are recorded, and only after every horse has coasted to a full stop the winner overlay & final leaderboard appear.
+Wheel Horse Spin is a browser-based horse racing game rendered with p5.js and plain HTML/CSS/JavaScript. It now supports both:
 
-## Core Features
+1. Single‑player local races (original mode)
+2. Multiplayer lobby → countdown → race → results flow with dynamic boost key rotation and persistent leaderboards
+
+Each session picks a DiceBear avatar style; avatars seed on horse/player name for consistent identity. Track geometry adapts to canvas size; races only end once all competitors (including bots in multiplayer) have crossed AND finished decelerating.
+
+## Core Features (Single‑Player)
 
 - Horse Management: Add / remove horses, persisted via `localStorage`; optional sharing through URL query (`?horses=Name1,Name2`).
 - Random Avatars: One DiceBear style chosen each page load; avatar seeded by horse name for repeatable identity.
@@ -18,7 +28,7 @@ Wheel Horse Spin is a browser-based animated horse race built with plain HTML/CS
 - Winner Overlay: Displays trophy icon, winner time, and total race duration (time of last finisher).
 - Pause/Resume: Fully pauses motion and timing (paused seconds excluded from finish times).
 
-## Key Constants (tune in `sketch.js`)
+## Key Constants (Single‑Player, in `sketch.js`)
 
 - `MAX_EXECUTION_TIME`: Target race duration (seconds) influencing base speed.
 - `LANE_WIDTH`: Visual lane thickness (affects track & avatar scale).
@@ -26,11 +36,11 @@ Wheel Horse Spin is a browser-based animated horse race built with plain HTML/CS
 - `DECELERATION_DURATION_MS`: Milliseconds horses coast after crossing finish.
 - `FINISH_LINE_WIDTH`: Width of the red finish rectangle.
 
-## Data & Sharing
+## Data & Sharing (Single‑Player)
 
 Horse roster saved in browser via `localStorage`. To share a lineup, construct a URL: `https://.../wheel-horse-spin/?horses=Seabiscuit,Secretariat` (max 10). On load, URL horses override stored horses and are then persisted.
 
-## Controls
+## Controls (Single‑Player)
 
 - Add Horse: Prompts for name, creates avatar.
 - Run Race: Starts race (hidden during race).
@@ -39,7 +49,7 @@ Horse roster saved in browser via `localStorage`. To share a lineup, construct a
 - Clear All Data: Removes all horses from storage.
 - Share URL: Copies a prebuilt sharable link with current horses.
 
-## Finish & Leaderboard Rules
+## Finish & Leaderboard Rules (Single‑Player)
 
 1. Finish time captured exactly when a horse first crosses its lane distance.
 2. Horse enters deceleration phase until speed reaches zero.
@@ -47,7 +57,7 @@ Horse roster saved in browser via `localStorage`. To share a lineup, construct a
 4. Winner determined by lowest finish time; ties flagged `(tie)`.
 5. Final leaderboard lists Rank | Name | Time | +Delta.
 
-## Extending Ideas
+## Extending Ideas (Single‑Player)
 
 - Export results as CSV and upload as artifact (placeholder—pipeline logic not yet implemented here).
 - Add sound effects or countdown.
@@ -55,10 +65,71 @@ Horse roster saved in browser via `localStorage`. To share a lineup, construct a
 - Easing curves (e.g. quadratic ease-out) for deceleration.
 - Different track shapes (figure-eight, etc.).
 
-## Dev Notes
+## Dev Notes (Single‑Player)
 
 The app is framework-free; p5.js handles rendering/animation. All state lives in memory plus `localStorage`. To change styling or race behavior, edit `sketch.js` and `style.css`. No build step required.
 
-## License
+## Multiplayer Overview
 
+Located in `multiplayer-race/`:
+
+- `server.js`: Express + WebSocket server; auto-migrates Postgres schema if `DATABASE_URL` set.
+- `mp-game.js`: Client multiplayer rendering, dynamic rotating boost key HUD, avatar logging.
+- `db/migrate.js` & `db/seed.js`: Schema ensure + demo data.
+- `openapi.yaml`: REST endpoint specification (Swagger/OpenAPI 3.0).
+- `thin-client.js`: Scriptable terminal client to simulate players.
+
+### Phases
+`lobby` → `countdown` (default 1s, adjustable) → `race` → `results` → host reset returns to `lobby`.
+
+### Dynamic Boost Key Mechanic
+- Rotates every 3s among: W A S D Q E Z X C Space.
+- HUD shows current key + seconds until rotation; flashes yellow briefly on change; short sine beep.
+- Key is forced released on rotation to prevent stuck boosts.
+
+### Multiplayer Constants (excerpt)
+`TOTAL_LANES`, `COUNTDOWN_SECONDS`, `BOOST_FACTOR`, `BOOST_MAX_DURATION_MS`, `BOOST_COOLDOWN_MS`, acceleration/deceleration rates, bot behavior probabilities.
+
+### Leaderboard & Statistics
+REST endpoints (see `openapi.yaml`) expose fastest times, top winners, player histories, last human finishes, room summaries, and last-place counts.
+
+### Database Schema Highlights
+Tables: `races`, `race_participants` (augmented with `is_last_human`, `human_final_position`, `human_finish_time_seconds`). Auto-indexed for common queries.
+
+### Running Multiplayer
+```zsh
+cd multiplayer-race
+npm install
+npm start            # starts server on :8080
+# Optional Postgres
+export DATABASE_URL="postgresql://user:pass@host:5432/db"; npm start
+```
+
+Open browser to `http://localhost:8080`.
+
+Swagger / API Docs (local): `http://localhost:8080/multiplayer-race/api-docs.html`
+
+### Simulating Players
+```zsh
+node thin-client.js ws://localhost:8080 roomId=dev username=Alice
+node thin-client.js ws://localhost:8080 roomId=dev username=Bob pretty-output=true
+```
+
+### WebSocket Message Summary
+Client → Server: `hello`, `setReady`, `startGame`, `pressBoost`, `rename`, `resetGame`, `returnToLobby`.
+Server → Client: `welcome`, `roomState`, `countdown`, `raceStart`, `tick`, `boost`, `raceEnd`.
+
+## Updated Documentation
+Additional detailed docs live in:
+- `multiplayer-race/README.md` (server usage & protocol)
+- `multiplayer-race/DATABASE_SETUP.md` (database schema & provisioning)
+- `multiplayer-race/game-description.md` (game design notes, updated for dynamic boost)
+- `.github/copilot-instructions.md` (agent guidance covering both modes)
+- `multiplayer-race/openapi.yaml` (OpenAPI spec)
+- `multiplayer-race/api-docs.html` (Swagger UI HTML)
+
+## Contributing & Style
+Keep framework-free approach; prefer small, surgical changes. Avoid introducing build tooling unless explicitly requested.
+
+## License
 No explicit license declared yet; treat as private/personal until one is added.

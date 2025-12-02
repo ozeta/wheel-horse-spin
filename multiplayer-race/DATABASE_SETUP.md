@@ -31,29 +31,33 @@ CREATE INDEX idx_races_winner ON races(winner_username);
 ```
 
 ### Table: `race_participants`
-Stores individual player results for each race.
+Stores individual player (human and bot) results for each race, plus human-only metadata used for last-place and room-level stats.
 
 ```sql
 CREATE TABLE race_participants (
-    id SERIAL PRIMARY KEY,
-    race_id UUID REFERENCES races(id) ON DELETE CASCADE,
-    player_id VARCHAR(255) NOT NULL,
-    username VARCHAR(255) NOT NULL,
-    is_bot BOOLEAN DEFAULT FALSE,
-    lane INTEGER NOT NULL,
-    finish_time_seconds DECIMAL(10, 3) NOT NULL,
-    delta_from_winner_seconds DECIMAL(10, 3) NOT NULL,
-    final_position INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id SERIAL PRIMARY KEY,
+  race_id UUID REFERENCES races(id) ON DELETE CASCADE,
+  player_id VARCHAR(255) NOT NULL,
+  username VARCHAR(255) NOT NULL,
+  is_bot BOOLEAN DEFAULT FALSE,
+  lane INTEGER NOT NULL,
+  finish_time_seconds DECIMAL(10, 3) NOT NULL,
+  delta_from_winner_seconds DECIMAL(10, 3) NOT NULL,
+  final_position INTEGER NOT NULL,
+  is_last_human BOOLEAN DEFAULT FALSE,
+  human_final_position INTEGER,
+  human_finish_time_seconds DECIMAL(10, 3),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_participants_race_id ON race_participants(race_id);
 CREATE INDEX idx_participants_player_id ON race_participants(player_id);
 CREATE INDEX idx_participants_username ON race_participants(username);
+CREATE INDEX idx_participants_last_human ON race_participants(is_last_human);
 ```
 
-### Optional Table: `player_stats` (Aggregated Statistics)
-Pre-computed statistics for faster leaderboard queries.
+### (Optional / Future) Table: `player_stats`
+Aggregated statistics for faster leaderboard queries (not currently auto-populated by server).
 
 ```sql
 CREATE TABLE player_stats (
@@ -235,7 +239,7 @@ cd multiplayer-race
 npm install pg
 ```
 
-**Example: Save race results (add to server.js)**
+**Example: Save race results (already implemented in `server.js`)**
 ```javascript
 const { Pool } = require('pg');
 
@@ -394,19 +398,18 @@ ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 
 ## Next Steps
 
-1. **Deploy to Render**: Push code to GitHub to trigger deployment
-2. **Verify Database**: Check Render dashboard for database provisioning
-3. **Run Migration**: Execute schema creation (Option A, B, or C above)
-4. **Test Connection**: Verify DATABASE_URL is available in web service
-5. **Implement saveRaceResults**: Add database saving to endRace function
-6. **Build Leaderboard API**: Create endpoints to query leaderboard data
-7. **Add UI**: Display leaderboards in game frontend
+1. Deploy to Render (auto-provisions DB via `render.yaml`).
+2. Confirm `DATABASE_URL` injected into service env.
+3. Start server (auto-migration runs if DB present).
+4. Use `/api/health` to verify `db.ok`.
+5. Generate demo data: `npm run db:seed` (room `dev-8`).
+6. Consume leaderboard endpoints from client sidebar.
+7. Optionally implement aggregated `player_stats` materialization for performance.
 
 ## Production Considerations
 
-For production/scaling beyond free tier:
-- Upgrade to paid plan for automatic backups and higher limits
-- Add connection pooling (pg-pool is already included)
-- Implement database migration versioning (e.g., node-pg-migrate)
-- Add monitoring/alerting for database errors
-- Consider read replicas for heavy leaderboard queries (paid feature)
+- Upgrade tier for automatic backups & higher connection limits.
+- Introduce migration versioning (e.g. `node-pg-migrate`) if schema evolves.
+- Add periodic vacuum / analyze monitoring.
+- Consider materialized views for heavy summary endpoints.
+- Potentially move boost rotation & authoritative physics server-side entirely for anti-cheat.
