@@ -60,6 +60,12 @@
               <ul id="lb-room-summary" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
             </div>
           </div>
+          <h4 style="margin:8px 0 4px; font-size:14px;">Most Last Places (Humans)</h4>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:260px;">
+              <ul id="lb-room-loses" style="list-style:none; padding:0; margin:0; font-size:12px;"></ul>
+            </div>
+          </div>
           <div id="lb-note" style="font-size:11px; color:#666; margin-top:6px;">Note: Requires DB; empty if not configured.</div>
         </div>
         <!-- Repo link at bottom -->
@@ -87,11 +93,20 @@
       try { const r = await fetch(url); return await r.json(); } catch { return { items: [] }; }
     }
     async function refreshLeaderboards() {
-      const room = (window.MP && MP.room) ? `?room=${encodeURIComponent(MP.room)}` : '';
+      // Robust room detection (fallback to URL param if MP.room not yet set)
+      const urlParams = new URLSearchParams(window.location.search);
+      const detectedRoom = (window.MP && MP.room) || urlParams.get('room') || 'dev';
+      const room = `?room=${encodeURIComponent(detectedRoom)}`;
       const data = await fetchJSON(`/api/leaderboard/room-summary${room}`);
       const ul = document.getElementById('lb-room-summary');
       ul.innerHTML = '';
-      (data.items || []).forEach(it => {
+      const summaryItems = data.items || [];
+      if (summaryItems.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No summary data yet for this room.';
+        ul.appendChild(li);
+      }
+      summaryItems.forEach(it => {
         const li = document.createElement('li');
         const lastWinTs = it.last_win_ts ? new Date(it.last_win_ts).toLocaleString() : '—';
         const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
@@ -99,6 +114,24 @@
         const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
         li.textContent = `${it.username} — wins: ${it.wins}, last places: ${it.last_places}, last win: ${lastWinSec} (${lastWinTs}), last last: ${lastLastSec} (${lastLastTs})`;
         ul.appendChild(li);
+      });
+
+      // Fetch ordered loses leaderboard
+      const losesData = await fetchJSON(`/api/leaderboard/room-loses${room}`);
+      const ulLoses = document.getElementById('lb-room-loses');
+      ulLoses.innerHTML = '';
+      const losesItems = losesData.items || [];
+      if (losesItems.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No last-place data yet for this room.';
+        ulLoses.appendChild(li);
+      }
+      losesItems.forEach(it => {
+        const li = document.createElement('li');
+        const lastLastTs = it.last_last_ts ? new Date(it.last_last_ts).toLocaleString() : '—';
+        const lastLastSec = typeof it.last_last_seconds === 'number' ? `${(+it.last_last_seconds).toFixed(2)}s` : '—';
+        li.textContent = `${it.username} — last places: ${it.last_places}, last occurrence: ${lastLastSec} (${lastLastTs})`;
+        ulLoses.appendChild(li);
       });
     }
     window.addEventListener('DOMContentLoaded', () => {
@@ -109,12 +142,22 @@
         const db = h.db || {}; const s = db.configured ? (db.ok ? 'DB: ok' : 'DB: error') : 'DB: not configured';
         el.textContent = s;
       });
-      refreshLeaderboards();
+      refreshLeaderboards(); // initial fetch
+      // Schedule a second fetch shortly after to catch late room initialization
+      setTimeout(refreshLeaderboards, 300);
       const toggle = document.getElementById('lb-toggle');
       const wrap = document.getElementById('leaderboardWrap');
       if (toggle && wrap) toggle.addEventListener('change', () => {
         wrap.style.display = toggle.checked ? 'block' : 'none';
       });
+      // Manual refresh button (debug aid)
+      if (wrap) {
+        const btn = document.createElement('button');
+        btn.textContent = 'Refresh Leaderboards';
+        btn.style.cssText = 'margin-top:6px; font-size:11px; padding:4px 6px;';
+        btn.addEventListener('click', () => refreshLeaderboards());
+        wrap.appendChild(btn);
+      }
     });
   </script>
 </body>

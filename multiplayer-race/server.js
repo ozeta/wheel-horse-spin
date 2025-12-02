@@ -376,13 +376,14 @@ app.get('/api/leaderboard/room-summary', async (req, res) => {
   try {
     // Wins summary per username in room
     const winsQuery = `
-      SELECT r.winner_username AS username,
+      SELECT rp.username AS username,
              COUNT(*) AS wins,
              MAX(r.race_timestamp) AS last_win_ts,
-             (ARRAY_AGG(r.winner_time_seconds ORDER BY r.race_timestamp DESC))[1] AS last_win_seconds
+             (ARRAY_AGG(rp.finish_time_seconds ORDER BY r.race_timestamp DESC))[1] AS last_win_seconds
       FROM races r
-      WHERE r.room_id = $1 AND r.winner_username IS NOT NULL
-      GROUP BY r.winner_username
+      JOIN race_participants rp ON rp.race_id = r.id
+      WHERE r.room_id = $1 AND rp.is_bot = FALSE AND rp.final_position = 1
+      GROUP BY rp.username
     `;
     const winsRes = await dbPool.query(winsQuery, [room]);
     const winsMap = new Map();
@@ -441,6 +442,32 @@ app.get('/api/leaderboard/room-summary', async (req, res) => {
     res.json({ room, items });
   } catch (err) {
     console.error('[api] room-summary error', err);
+    res.json({ items: [] });
+  }
+});
+
+// Room loses: humans ordered by number of last places (descending)
+app.get('/api/leaderboard/room-loses', async (req, res) => {
+  if (!dbPool) return res.json({ items: [] });
+  const room = (req.query.room && String(req.query.room).trim()) || null;
+  if (!room) return res.json({ items: [] });
+  try {
+    const sql = `
+      SELECT rp.username AS username,
+             COUNT(*) AS last_places,
+             MAX(r.race_timestamp) AS last_last_ts,
+             (ARRAY_AGG(rp.human_finish_time_seconds ORDER BY r.race_timestamp DESC))[1] AS last_last_seconds
+      FROM race_participants rp
+      JOIN races r ON r.id = rp.race_id
+      WHERE r.room_id = $1 AND rp.is_bot = FALSE AND rp.is_last_human = TRUE
+      GROUP BY rp.username
+      ORDER BY last_places DESC, rp.username ASC
+      LIMIT 20
+    `;
+    const { rows } = await dbPool.query(sql, [room]);
+    res.json({ room, items: rows });
+  } catch (err) {
+    console.error('[api] room-loses error', err);
     res.json({ items: [] });
   }
 });

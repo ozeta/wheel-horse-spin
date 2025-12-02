@@ -138,6 +138,8 @@ function handleMessage(msg) {
         if (lobbySection) lobbySection.style.display = 'block';
         if (resultsWrap) resultsWrap.style.display = 'none';
       }
+      // Refresh leaderboards once we have room state (ensures MP.room is set and connection established)
+      try { if (typeof window.refreshLeaderboards === 'function') window.refreshLeaderboards(); } catch {}
       break;
     case 'countdown':
       MP.phase = 'countdown';
