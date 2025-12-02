@@ -1,0 +1,222 @@
+openapi: 3.0.3
+info:
+  title: Wheel Horse Spin Multiplayer API
+  version: 1.0.0
+  description: REST endpoints for server status and leaderboards. WebSocket protocol documented in README.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/commit:
+    get:
+      summary: Get current commit SHA
+      tags: [System]
+      responses:
+        '200':
+          description: Commit info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Commit'
+  /api/health:
+    get:
+      summary: Health check and optional DB status
+      tags: [System]
+      responses:
+        '200':
+          description: Health payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/leaderboard/fastest:
+    get:
+      summary: Fastest winner times (global)
+      tags: [Leaderboard]
+      responses:
+        '200':
+          description: Fastest times
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastestList'
+  /api/leaderboard/top:
+    get:
+      summary: Top winners by win count and best time
+      tags: [Leaderboard]
+      responses:
+        '200':
+          description: Top winners
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopList'
+  /api/leaderboard/player/{username}:
+    get:
+      summary: Recent races for a player
+      tags: [Leaderboard]
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Player race history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerHistory'
+  /api/leaderboard/last-humans:
+    get:
+      summary: Most recent last-place human finishes
+      tags: [Leaderboard]
+      parameters:
+        - name: room
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Last human finish entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LastHumansList'
+  /api/leaderboard/room-summary:
+    get:
+      summary: Per-room aggregated wins and last places
+      tags: [Leaderboard]
+      parameters:
+        - name: room
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Room summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomSummary'
+  /api/leaderboard/room-loses:
+    get:
+      summary: Players ordered by last-place count
+      tags: [Leaderboard]
+      parameters:
+        - name: room
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Room loses list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomLoses'
+components:
+  schemas:
+    Commit:
+      type: object
+      properties:
+        sha:
+          type: string
+      required: [sha]
+    Health:
+      type: object
+      properties:
+        status: { type: string }
+        commit: { type: string }
+        db:
+          type: object
+          properties:
+            configured: { type: boolean }
+            ok: { type: boolean }
+            error: { type: string }
+    FastestItem:
+      type: object
+      properties:
+        username: { type: string }
+        time: { type: number }
+        ts: { type: string, format: date-time }
+        room_id: { type: string }
+    FastestList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FastestItem' }
+    TopItem:
+      type: object
+      properties:
+        username: { type: string }
+        wins: { type: integer }
+        best_time: { type: number }
+    TopList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TopItem' }
+    PlayerHistoryItem:
+      type: object
+      properties:
+        ts: { type: string, format: date-time }
+        position: { type: integer }
+        time: { type: number }
+        delta: { type: number }
+        total: { type: integer }
+    PlayerHistory:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/PlayerHistoryItem' }
+    LastHumanItem:
+      type: object
+      properties:
+        username: { type: string }
+        time: { type: number }
+        ts: { type: string, format: date-time }
+        room_id: { type: string }
+    LastHumansList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/LastHumanItem' }
+    RoomSummaryItem:
+      type: object
+      properties:
+        username: { type: string }
+        wins: { type: integer }
+        last_places: { type: integer }
+        last_win_ts: { type: string, format: date-time }
+        last_win_seconds: { type: number }
+        last_last_ts: { type: string, format: date-time }
+        last_last_seconds: { type: number }
+    RoomSummary:
+      type: object
+      properties:
+        room: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RoomSummaryItem' }
+    RoomLosesItem:
+      type: object
+      properties:
+        username: { type: string }
+        last_places: { type: integer }
+        last_last_ts: { type: string, format: date-time }
+        last_last_seconds: { type: number }
+    RoomLoses:
+      type: object
+      properties:
+        room: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RoomLosesItem' }

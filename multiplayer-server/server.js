@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from "uuid";
 
 // CONFIGURABLE CONSTANTS
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8080;
-const MAX_PLAYERS = 10;
+const MAX_PLAYERS = 2;
 const MATCH_DURATION_MS = 10_000; // 10 seconds
 const BROADCAST_INTERVAL_MS = 300; // 300 ms for live updates
 const RATE_LIMIT_WINDOW_MS = 1000; // sliding window 1000ms

@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:16
+    container_name: wheel_horse_spin_db
+    environment:
+      POSTGRES_DB: wheel_horse_spin
+      POSTGRES_USER: whs
+      POSTGRES_PASSWORD: whs_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "whs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  adminer:
+    image: adminer:latest
+    container_name: wheel_horse_spin_adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  db_data:
