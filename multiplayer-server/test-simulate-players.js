@@ -2,7 +2,7 @@ import WebSocket from "ws";
 
 const URL = "ws://localhost:8080";
 const PLAYERS = 10;
-const PRESS_MS = 40; // ~25 press/sec, il server ne accetterà max 20
+const PRESS_MS = 40; // ~25 press/sec
 const clients = [];
 
 for (let i = 0; i < PLAYERS; i++) {

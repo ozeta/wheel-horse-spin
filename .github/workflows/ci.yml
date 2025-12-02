@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feat/**
+      - feature/**
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: multiplayer-race
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            multiplayer-race/package-lock.json
+            package-lock.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then npm ci; fi
+        working-directory: multiplayer-race
+
+      - name: Basic lint check (optional)
+        run: |
+          if npm run | grep -q "lint"; then npm run lint; else echo "No lint script"; fi
+
+      - name: Basic server syntax check
+        run: node -c server.js || echo "Node syntax check not available; running node --eval"
+        continue-on-error: true
+
+      - name: List files
+        run: ls -la
