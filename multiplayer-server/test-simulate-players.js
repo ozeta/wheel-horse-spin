@@ -10,7 +10,6 @@ for (let i = 0; i < PLAYERS; i++) {
   ws.on("message", (m) => console.log(`[Player ${i}]`, m.toString()));
   ws.on("open", () => console.log(`Player ${i} connected`));
   clients.push(ws);
-  clients.push(ws);
   clients[i] = ws;
 }
 
