@@ -39,7 +39,7 @@ Multiplayer:
 - Rooms keyed by id; per-room `players` (Map), `bots[]` (fill lanes), phases: `lobby` | `countdown` | `race` | `results`.
 - Server tracks per-player progress, boost state, finish + deceleration completion.
 - Database (optional) stores `races` + `race_participants` with human/bot flags & last-human markers.
-	- DB setup scripts: run migrations + seed; CI smoke test provisions ephemeral Postgres.
+ 	- DB setup scripts: run migrations + seed; CI smoke test provisions ephemeral Postgres.
 
 ## Race Geometry & Rendering
 
@@ -106,7 +106,7 @@ Multiplayer additions:
 - New per-horse attributes: Extend object creation in `initializeHorseObjects()`; avoid mutating `horses` (persisted) – use `horseObjects` for runtime fields.
 - Race logic changes: Modify `updateHorses()` (motion) or `checkRaceCompletion()` (finish criteria) – keep separation.
 - Rendering add-ons: Inject into `draw()` respecting game state gating (avoid expensive work outside racing/finished states).
- - Multiplayer client build: no bundler; keep pure JS/p5.js; avoid frame-fetch loops.
+- Multiplayer client build: no bundler; keep pure JS/p5.js; avoid frame-fetch loops.
 
 ## Do / Don’t
 
@@ -145,7 +145,7 @@ Multiplayer:
 - Finish compile: `endRace(room, results)` → DB persist
 - Client progress smoothing: interpolation in `syncRaceProgress()`
 - Dynamic boost key: rotation functions in `mp-game.js`
- - HUD overlays: countdown + key hint; audio cue; flash window.
+- HUD overlays: countdown + key hint; audio cue; flash window.
 
 ## Dynamic Boost Key (Multiplayer)
 
@@ -172,11 +172,12 @@ Swagger UI: open `multiplayer-race/api-docs.html` locally; set spec URL to `open
 CI smoke test runs `db/migrate.js` and `db/seed.js` against ephemeral Postgres (`DATABASE_URL`).
 
 ## Developer Workflows
+
 - Local single-player: open `index.html` in a browser.
 - Local multiplayer server: in `multiplayer-race` run:
-	- `npm ci`
-	- `npm start` (or `node server.js`); set `DATABASE_URL` if using Postgres.
-	- Seed data: `npm run db:seed`.
+ 	- `npm ci`
+ 	- `npm start` (or `node server.js`); set `DATABASE_URL` if using Postgres.
+ 	- Seed data: `npm run db:seed`.
 - Render deployment: see `readme.md` for live link and hosting notes.
 - CI: workflows auto-run on push/PR; fix failing lint/migration/audit in `multiplayer-race/`.
 
