@@ -78,6 +78,7 @@ See `openapi.yaml` for full schema.
 If DB absent: endpoints return empty arrays.
 
 Notes:
+
 - Health endpoint reports `db.configured` and `db.ok` (with optional `error`).
 
 ## Thin client
@@ -120,6 +121,7 @@ Spec file (raw): `openapi.yaml`
   - `raceEnd { results }`
 
 ### Dynamic Boost Key (Client HUD)
+
 - Rotates every 3s among `W A S D Q E Z X C Space`.
 - HUD shows countdown seconds until next rotation.
 - Flash highlight and beep on change; boost forcibly released.
@@ -148,21 +150,25 @@ Server -> raceEnd { results:{ winnerId:1, results:[{id:1,finishSeconds:9.87,delt
 ```
 
 Notes:
+
 - Intermediate `tick` events truncated.
 - Boost auto-expiration (client-side) triggers a release message with `reason` logged locally.
 - After `raceEnd` host may initiate `resetGame` to return to lobby.
 
 ## Database & Deployment
+
 ### Schema Delta
+
 `race_participants` includes extra columns: `is_last_human`, `human_final_position`, `human_finish_time_seconds` and index `idx_participants_last_human`.
 
 ### OpenAPI
+
 Import `openapi.yaml` into Swagger UI / Postman for interactive docs.
 
 ### Extending
+
 - Add new metrics: create SQL query, expose via `/api/...`, update `openapi.yaml`.
 - Move boost key rotation server-side for authoritative fairness (broadcast current key each tick).
 - Add accessibility override to fix boost key.
-
 
 See `multiplayer-race/DATABASE_SETUP.md` and root `render.yaml` for provisioning a managed PostgreSQL on Render and linking `DATABASE_URL` to the web service.
