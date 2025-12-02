@@ -55,7 +55,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // Allow server override via query param
   MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
   // If server param provided, prefer it
-  MP.serverUrl = (serverParam && serverParam.trim()) || MP.serverUrl;
   // Normalize protocol: if page is https and using ws:// remote host, upgrade to wss://
   try {
     const u = new URL(MP.serverUrl, window.location.href);
