@@ -1,5 +1,7 @@
 # Wheel Horse Spin — Multiplayer Server
 
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-blue)](openapi.yaml)
+
 Node.js WebSocket + REST server implementing lobby → countdown → race → results with bots filling remaining lanes and dynamic rotating boost keys.
 
 ## Setup
@@ -92,7 +94,15 @@ node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=
 node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=true debug=true
 ```
 
-## Protocol (summary)
+### API Docs & Swagger UI
+
+Interactive docs (served statically once server is running):
+
+`http://localhost:8080/multiplayer-race/api-docs.html`
+
+Spec file (raw): `openapi.yaml`
+
+### Protocol (summary)
 
 - Client → Server
   - `hello { roomId, username, version }`
@@ -115,6 +125,32 @@ node thin-client.js ws://localhost:8080 roomId=dev username=Alice pretty-output=
 - Flash highlight and beep on change; boost forcibly released.
 
 Server enforces boost duration (`BOOST_MAX_DURATION_MS`) & cooldown (`BOOST_COOLDOWN_MS`).
+
+## WebSocket Example Transcript
+
+```
+Client -> hello { roomId:"dev", username:"Alice", version:1 }
+Server -> welcome { clientId:1, roomId:"dev", hostId:1 }
+Server -> roomState { phase:"lobby", players:[{id:1,username:"Alice",ready:false,lane:0}], bots:[...] }
+Client -> setReady { ready:true }
+Server -> roomState { players:[{id:1,ready:true,...}], bots:[...] }
+Client(host) -> startGame {}
+Server -> countdown { secondsLeft:1, countdownEndsAt:173... }
+Server -> raceStart { raceId:"dev-173...", players:[{id:1,lane:0}], bots:[...], constants:{...} }
+Server -> tick { tServerMs:..., players:[{id:1,progress:0.05,currentSpeed:0.12}], bots:[...] }
+Client -> pressBoost { down:true, atClientMs:... }
+Server -> boost { playerId:1, down:true, accepted:true }
+Server -> tick { players:[{progress:0.10,currentSpeed:0.20, finished:false}], bots:[...] }
+Client -> pressBoost { down:false, atClientMs:... }
+Server -> boost { playerId:1, down:false, accepted:true }
+... (ticks continue; finish crossing triggers finished=true)
+Server -> raceEnd { results:{ winnerId:1, results:[{id:1,finishSeconds:9.87,deltaSeconds:0}, {...bot...}] } }
+```
+
+Notes:
+- Intermediate `tick` events truncated.
+- Boost auto-expiration (client-side) triggers a release message with `reason` logged locally.
+- After `raceEnd` host may initiate `resetGame` to return to lobby.
 
 ## Database & Deployment
 ### Schema Delta

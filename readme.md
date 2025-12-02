@@ -7,6 +7,22 @@ Play single‑player: <https://ozeta.github.io/wheel-horse-spin/>
 
 Multiplayer server: run locally from `multiplayer-race/` (WebSocket + REST + optional Postgres persistence)
 
+Live multiplayer (Render): <https://wheel-horse-spin-mp-server.onrender.com/game.html>
+
+## Gameplay & Objective
+
+Wheel Horse Spin is a fast lap sprint focused on pacing and tactical boost timing. In multiplayer the psychological twist is: **your primary objective is to avoid being the last human finisher**. The human who arrives last pays the (figurative) "toll" – a social / penalty mechanic (e.g. picking up next round, forfeiting a token, or logging an owed favor) you can adapt to your group. Bots do not count for the toll; ranking is evaluated among human players only.
+
+Key tension points:
+- Rotating boost input (every 3s) forces attention and prevents macro scripting.
+- Short countdown emphasizes readiness; early boost timing can create decisive separation.
+- Deceleration after finish means photo-finishes can still shift if a trailing player surges before crossing.
+
+House Rule Ideas for the Toll:
+- Loser adds 1 to a cumulative debt counter.
+- Loser must seed a special challenge for next race.
+- Loser funds an in-game cosmetic (future feature) for the winner.
+
 ## Summary
 
 Wheel Horse Spin is a browser-based horse racing game rendered with p5.js and plain HTML/CSS/JavaScript. It now supports both:
@@ -15,6 +31,8 @@ Wheel Horse Spin is a browser-based horse racing game rendered with p5.js and pl
 2. Multiplayer lobby → countdown → race → results flow with dynamic boost key rotation and persistent leaderboards
 
 Each session picks a DiceBear avatar style; avatars seed on horse/player name for consistent identity. Track geometry adapts to canvas size; races only end once all competitors (including bots in multiplayer) have crossed AND finished decelerating.
+
+Render deployment provides a public multiplayer arena; see below for hosting notes.
 
 ## Core Features (Single‑Player)
 
@@ -108,6 +126,21 @@ export DATABASE_URL="postgresql://user:pass@host:5432/db"; npm start
 Open browser to `http://localhost:8080`.
 
 Swagger / API Docs (local): `http://localhost:8080/multiplayer-race/api-docs.html`
+
+### Render.com Deployment
+The live multiplayer instance runs on Render.com:
+- Continuous Deployment: pushes to the tracked branch rebuild and redeploy automatically.
+- Service Type: Web Service + optional PostgreSQL database (provisioned via `render.yaml`).
+- Environment: `DATABASE_URL` injected by Render for leaderboards; if absent, endpoints degrade gracefully to empty lists.
+- Free Tier Considerations: cold starts can briefly delay first response; database has limited connections & storage. Health endpoint exposes `db.configured` and `db.ok` for quick diagnostics.
+- Static Assets: served directly via Express from repo root (no CDN layer). For heavier traffic consider enabling a CDN or splitting static hosting.
+
+To self-host similarly:
+1. Fork repository.
+2. Add a new Web Service (Node) pointing to fork.
+3. Add a PostgreSQL database; link its environment details.
+4. Ensure `DATABASE_URL` present; deploy.
+5. Verify `/api/health` returns `db.ok: true`.
 
 ### Simulating Players
 ```zsh
