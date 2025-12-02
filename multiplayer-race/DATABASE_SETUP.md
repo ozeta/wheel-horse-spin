@@ -1,11 +1,13 @@
 # Database Setup for Wheel Horse Spin Leaderboard
 
 ## Overview
+
 PostgreSQL database on Render.com for storing race results and leaderboards.
 
 ## Database Schema
 
 ### Table: `races`
+
 Stores individual race records with complete results.
 
 ```sql
@@ -31,6 +33,7 @@ CREATE INDEX idx_races_winner ON races(winner_username);
 ```
 
 ### Table: `race_participants`
+
 Stores individual player (human and bot) results for each race, plus human-only metadata used for last-place and room-level stats.
 
 ```sql
@@ -57,6 +60,7 @@ CREATE INDEX idx_participants_last_human ON race_participants(is_last_human);
 ```
 
 ### (Optional / Future) Table: `player_stats`
+
 Aggregated statistics for faster leaderboard queries (not currently auto-populated by server).
 
 ```sql
@@ -78,6 +82,7 @@ CREATE INDEX idx_player_stats_best_time ON player_stats(best_time_seconds ASC);
 ## Render.com Database Setup
 
 ### 1. Deployment via render.yaml
+
 Your `render.yaml` already includes the database configuration:
 
 ```yaml
@@ -88,6 +93,7 @@ databases:
 ```
 
 When you push to GitHub and deploy via Render:
+
 - Render automatically provisions the PostgreSQL database
 - The database is in Frankfurt (same region as your server)
 - Free tier includes: 256MB RAM, 1GB storage, limited hours per month
@@ -95,7 +101,8 @@ When you push to GitHub and deploy via Render:
 ### 2. Access Database Credentials
 
 **Via Render Dashboard:**
-1. Go to https://dashboard.render.com
+
+1. Go to <https://dashboard.render.com>
 2. Navigate to your database: `wheel-horse-spin-db`
 3. Click "Info" tab to see:
    - Internal Database URL (for your web service)
@@ -104,6 +111,7 @@ When you push to GitHub and deploy via Render:
 
 **Via Environment Variable:**
 Your web service automatically receives `DATABASE_URL` environment variable with the connection string:
+
 ```
 postgresql://username:password@hostname:port/database
 ```
@@ -111,6 +119,7 @@ postgresql://username:password@hostname:port/database
 ### 3. Initialize Database Schema
 
 **Option A: Manual via psql (from local machine)**
+
 ```bash
 # Install psql locally if not available
 brew install postgresql  # macOS
@@ -130,6 +139,7 @@ CREATE TABLE race_participants (...);
 
 **Option B: Via migration script in Node.js**
 Create `multiplayer-race/db/migrate.js`:
+
 ```javascript
 const { Pool } = require('pg');
 
@@ -208,6 +218,7 @@ migrate().catch(console.error);
 ```
 
 Run migration:
+
 ```bash
 cd multiplayer-race
 npm install pg
@@ -216,6 +227,7 @@ node db/migrate.js
 
 **Option C: Auto-migrate on server startup**
 Add to `server.js` startup:
+
 ```javascript
 const { Pool } = require('pg');
 
@@ -234,12 +246,14 @@ if (process.env.DATABASE_URL) {
 ### 4. Using Database in Application
 
 **Install pg library:**
+
 ```bash
 cd multiplayer-race
 npm install pg
 ```
 
 **Example: Save race results (already implemented in `server.js`)**
+
 ```javascript
 const { Pool } = require('pg');
 
@@ -322,6 +336,7 @@ function endRace(room, results) {
 ### 5. Query Examples
 
 **Get top 10 winners by total wins:**
+
 ```sql
 SELECT username, total_wins, total_races, best_time_seconds
 FROM player_stats
@@ -330,6 +345,7 @@ LIMIT 10;
 ```
 
 **Get fastest lap times (all-time):**
+
 ```sql
 SELECT r.winner_username, r.winner_time_seconds, r.race_timestamp, r.room_id
 FROM races r
@@ -338,6 +354,7 @@ LIMIT 10;
 ```
 
 **Get player history:**
+
 ```sql
 SELECT r.race_timestamp, rp.final_position, rp.finish_time_seconds,
        rp.delta_from_winner_seconds, r.total_participants
@@ -349,6 +366,7 @@ LIMIT 20;
 ```
 
 **Room-specific leaderboard:**
+
 ```sql
 SELECT r.winner_username, COUNT(*) as wins, MIN(r.winner_time_seconds) as best_time
 FROM races r
@@ -361,12 +379,14 @@ LIMIT 10;
 ## Render.com Management
 
 ### Database Dashboard Features
+
 - **Metrics**: CPU, memory, storage usage
 - **Backups**: Manual backups on free tier (automatic on paid plans)
 - **Logs**: Query logs, error logs
 - **Connection info**: Internal/external URLs, credentials
 
 ### Free Tier Limitations
+
 - **Storage**: 1GB max
 - **RAM**: 256MB
 - **Uptime**: Database may spin down after inactivity (restarts automatically)
@@ -374,6 +394,7 @@ LIMIT 10;
 - **No automatic backups** (manual backups only)
 
 ### Backup Strategy (Free Tier)
+
 ```bash
 # Manual backup via pg_dump
 pg_dump <EXTERNAL_DATABASE_URL> > backup_$(date +%Y%m%d).sql
@@ -383,6 +404,7 @@ psql <EXTERNAL_DATABASE_URL> < backup_20251201.sql
 ```
 
 ### Monitoring Database Size
+
 ```sql
 -- Check database size
 SELECT pg_size_pretty(pg_database_size('database_name'));
