@@ -17,6 +17,7 @@
 
 const http = require('http');
 const express = require('express');
+const RateLimit = require('express-rate-limit');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { execSync } = require('child_process');
@@ -472,8 +473,12 @@ app.get('/api/leaderboard/room-loses', async (req, res) => {
   }
 });
 
-// Fallback: serve game.html as default
-app.get('/', (req, res) => {
+// Rate limiter for serving game.html (fallback route)
+const rootLimiter = RateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+});
+app.get('/', rootLimiter, (req, res) => {
   res.sendFile(path.join(staticPath, 'game.html'));
 });
 
