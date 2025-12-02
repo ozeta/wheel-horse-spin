@@ -1,0 +1,47 @@
+# Pre-commit hooks for Wheel Horse Spin
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.min\.(js|css)$'
+      - id: end-of-file-fixer
+        exclude: '\.min\.(js|css)$|node_modules/'
+      - id: check-yaml
+      - id: check-json
+        exclude: 'package-lock\.json$'
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+  # JavaScript syntax validation
+  - repo: https://github.com/pre-commit/mirrors-jshint
+    rev: v2.13.6
+    hooks:
+      - id: jshint
+        files: '\.js$'
+        exclude: 'node_modules/|\.min\.js$|multiplayer-server/|multiplayer-race/db/seed\.js|multiplayer-race/thin-client\.js|mp-game\.js'
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.39.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+        exclude: 'node_modules/'
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint

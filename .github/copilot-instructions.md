@@ -4,7 +4,9 @@ These instructions orient AI coding agents quickly in the Wheel Horse Spin repos
 Keep responses focused on existing patterns – do not introduce frameworks or build tooling.
 
 ## Overview
+
 Two modes:
+
 1. Single-page browser race (HTML/CSS/JS + p5.js) – local horses.
 2. Multiplayer WebSocket server (`multiplayer-race/`) – lobby → countdown → race → results; bots auto-fill lanes.
 
@@ -12,7 +14,9 @@ Framework-free; no build step. Keep additions minimal and consistent.
 CI workflows live in `.github/workflows/` (CI, OpenAPI lint, DB migration smoke, CodeQL, dependency review, npm audit).
 
 ## Key Files
+
 Single-player:
+
 - `index.html` – static scaffold & controls.
 - `style.css` – layout & visual constants.
 - `sketch.js` – race logic/state/render.
@@ -27,7 +31,9 @@ Docs:
 - `readme.md` / `multiplayer-race/README.md` – gameplay, server usage.
 
 ## State & Data Model
+
 Single-player:
+
 - `horses[]` persisted roster; `horseObjects[]` runtime physics.
 Multiplayer:
 - Rooms keyed by id; per-room `players` (Map), `bots[]` (fill lanes), phases: `lobby` | `countdown` | `race` | `results`.
@@ -36,7 +42,9 @@ Multiplayer:
 	- DB setup scripts: run migrations + seed; CI smoke test provisions ephemeral Postgres.
 
 ## Race Geometry & Rendering
+
 Shared oval track logic: alternating lanes, finish rectangle. Multiplayer client downsizes complexity vs single-player but reuses lane mapping & avatar seeding.
+
 - Geometry recalculated each frame (`calculateTrackGeometry`) – depends on canvas size and lane count.
 - Track: Two semicircle arcs joined by straights (derived from outer rectangle minus arc diameter). Lane width is uniform.
 - Alternating lane colors; divider lines drawn atop.
@@ -44,8 +52,10 @@ Shared oval track logic: alternating lanes, finish rectangle. Multiplayer client
 - Horse position computed by segment mapping of perimeter distance (top straight → right arc → bottom straight → left arc).
 
 ## Lifecycle & Timing
+
 Single-player: `startRace()` → frame loop updates until all decel done.
 Multiplayer: lobby ready gating → short `COUNTDOWN_SECONDS` → server-driven tick (progress + speed interpolation on client) → full-stop deceleration → results.
+
 1. `startRace()`: Resets progress/speed; sets `raceStartMillis`, clears timing accumulators; hides Run, shows Pause/Reset.
 2. `updateHorses()`: For each horse: fluctuate speed around base; upon crossing finish sets `finished`, records `finishSeconds`, starts deceleration phase.
 3. Deceleration: Linear speed drop over `DECELERATION_DURATION_MS`; horse continues moving (progress keeps increasing past official finish distance) until speed reaches 0.
@@ -54,16 +64,20 @@ Multiplayer: lobby ready gating → short `COUNTDOWN_SECONDS` → server-driven 
 Multiplayer countdown overlay appears; server is authoritative for progress and finish times.
 
 ## Leaderboards & Overlay
+
 Single-player: live + final leaderboard overlay.
 Multiplayer: REST endpoints supply aggregated stats (fastest, top wins, last humans, room summary, loses). Client sidebar renders dynamic tables + charts.
+
 - Live leaderboard: Sorted finished (by finish time asc) then unfinished (by progress descending). Displays finish time or ellipsis for unfinished, marks top 3 with gold/silver/copper bullet.
 - Final leaderboard: After race end; rank by finish time; columns Rank | Name | Time (with tie) | +Delta. Top 3 colored, tie flagged on equal winnerTime.
 - Winner overlay: Trophy emoji, winner time, total race duration, tie indicator.
  YAML stats panel: Copy button with hover/click states; emits `stats:` list from `horseStats`.
 
 ## Constants
+
 Single-player: adjust in `sketch.js`.
 Multiplayer: constants dispatched via `roomState` / `raceStart` (`INPUT_KEY`, `COUNTDOWN_SECONDS`, speed tuning, boost cooldowns, decel duration). Dynamic boost key rotation handled client-side.
+
 - `MAX_EXECUTION_TIME`: Target nominal race length (seconds) used to derive base speed.
 - `LANE_WIDTH`: Lane thickness (impacts track radius & avatar sizing).
 - `AVATAR_SIZE_FACTOR`: Size multiplier vs lane width.
@@ -72,12 +86,16 @@ Multiplayer: constants dispatched via `roomState` / `raceStart` (`INPUT_KEY`, `C
 Multiplayer dispatches constants via `roomState`/`raceStart`; client rotates boost key.
 
 ## Pause Behavior
+
 Single-player only (`paused` state). Multiplayer does not pause mid-race; state machine is linear.
+
 - `pauseGameBtn` toggles `racing` ↔ `paused` – progress & speed updates suspended; timing accumulation excluded.
 - Resuming continues from preserved `pausedAccumulatedMillis` offset.
 
 ## Adding Features – Follow Existing Patterns
+
 General:
+
 - Prefer extending existing procedural style; avoid large abstractions.
 Single-player additions: inject into `draw()`, modify `updateHorses()` or leaderboard rendering.
 Multiplayer additions:
@@ -91,6 +109,7 @@ Multiplayer additions:
  - Multiplayer client build: no bundler; keep pure JS/p5.js; avoid frame-fetch loops.
 
 ## Do / Don’t
+
 - DO keep everything framework-free (no build steps).
 - DO preserve existing state machine strings.
 - DO reuse constants; if introducing a new tuning variable, group near existing constant block.
@@ -99,7 +118,9 @@ Multiplayer additions:
 - DON’T introduce asynchronous fetch loops each frame; preload assets in `preload()` or during horse add.
 
 ## Common Extension Examples
+
 Multiplayer:
+
 - New stat endpoint (e.g. median finish): add SQL query, update OpenAPI spec.
 - Authoritative boost key rotation (currently client-only): move key sequence to server and broadcast.
 - Accessibility: fixed boost key mode toggle.
@@ -110,7 +131,9 @@ CI/Docs:
 - Add workflow badges to `readme.md` if needed; keep `openapi.yaml` valid (Redocly lint passes).
 
 ## Quick Reference (Typical Hooks)
+
 Single-player:
+
 - Start: `startRace()`
 - Frame: `draw()`, calls `updateHorses()`, `checkRaceCompletion()`
 - Position: `getHorsePosition(horse)`
@@ -125,13 +148,16 @@ Multiplayer:
  - HUD overlays: countdown + key hint; audio cue; flash window.
 
 ## Dynamic Boost Key (Multiplayer)
+
 - Rotation interval: 3000ms
 - Key set: W A S D Q E Z X C Space
 - HUD: countdown + flash + audio beep
 - Auto-release on key change & max duration enforcement server-side
 
 ## REST Endpoints Summary
+
 See `multiplayer-race/openapi.yaml`.
+
 - `/api/commit`, `/api/health`
 - `/api/leaderboard/fastest`, `/api/leaderboard/top`
 - `/api/leaderboard/player/:username`
@@ -141,6 +167,7 @@ See `multiplayer-race/openapi.yaml`.
 Swagger UI: open `multiplayer-race/api-docs.html` locally; set spec URL to `openapi.yaml`.
 
 ## Database Schema (Delta)
+
 `race_participants` includes: `is_last_human`, `human_final_position`, `human_finish_time_seconds` for last-place & human-only stats.
 CI smoke test runs `db/migrate.js` and `db/seed.js` against ephemeral Postgres (`DATABASE_URL`).
 
