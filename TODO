@@ -1,0 +1,16 @@
+Verification pass complete and label size increased.
+
+Summary:
+
+Dynamic rotation: Initialized at raceStart via initDynamicBoost(). Countdown hint shows the current key; before rotation first key is default 'E'. No stale INPUT_KEY references remain.
+Rotation logic: rotateBoostKey() enforces non-repeat, releases held boost, flashes highlight, plays audio. Frame check uses performance.now(); interval constant correct.
+Input handling: Ignores keys while typing in editable fields; normalizes Space; release sent on key change and on keyup.
+HUD updates: Panel enlarged (308x121). Instruction label size raised from 14 to 17 (~21%).
+Safety: No infinite loops, no undefined vars; _boostDown scoped globally; countdown header now appends boost key during countdown ticks.
+Optional improvements (tell me if you’d like any):
+
+Start rotation during countdown (so key may change pre-race).
+Accessibility toggle to fix key (reduce cognitive load).
+Visual indicator for upcoming next key (preview ghost).
+Volume control or mute for cue.
+Let me know if you want any of those or to proceed with a commit.

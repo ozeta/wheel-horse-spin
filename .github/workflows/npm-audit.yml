@@ -1,0 +1,38 @@
+name: NPM Audit
+
+on:
+  push:
+    branches: [ main, feat/**, feature/** ]
+    paths:
+      - 'multiplayer-race/package.json'
+      - 'multiplayer-race/package-lock.json'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'multiplayer-race/package.json'
+      - 'multiplayer-race/package-lock.json'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: multiplayer-race
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            multiplayer-race/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit (fail on high)
+        run: |
+          npm audit --audit-level=high || (echo "High severity vulnerabilities found" && exit 1)

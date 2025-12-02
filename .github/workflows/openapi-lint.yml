@@ -1,0 +1,27 @@
+name: OpenAPI Lint
+
+on:
+  push:
+    paths:
+      - 'multiplayer-race/openapi.yaml'
+  pull_request:
+    paths:
+      - 'multiplayer-race/openapi.yaml'
+
+jobs:
+  lint-openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli
+
+      - name: Lint OpenAPI spec
+        run: redocly lint multiplayer-race/openapi.yaml

@@ -1,0 +1,78 @@
+name: DB Migration Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+      - feat/**
+      - feature/**
+    paths:
+      - 'multiplayer-race/db/**'
+      - 'multiplayer-race/server.js'
+      - 'multiplayer-race/package.json'
+      - 'multiplayer-race/package-lock.json'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'multiplayer-race/db/**'
+      - 'multiplayer-race/server.js'
+      - 'multiplayer-race/package.json'
+      - 'multiplayer-race/package-lock.json'
+
+jobs:
+  migrate-and-seed:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: appdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    defaults:
+      run:
+        working-directory: multiplayer-race
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            multiplayer-race/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            nc -z 127.0.0.1 5432 && echo "Postgres up" && break
+            echo "Waiting for Postgres..." && sleep 2
+          done
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/appdb
+        run: node db/migrate.js
+
+      - name: Seed database
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/appdb
+        run: npm run db:seed || node db/seed.js
+
+      - name: Brief query check
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/appdb
+        run: |
+          node -e "const {Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();const r=await c.query('SELECT count(*) FROM races');console.log('races:',r.rows[0].count);await c.end();})();"
