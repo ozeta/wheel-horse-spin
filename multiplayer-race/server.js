@@ -731,7 +731,6 @@ function updateRace(room) {
 
     // Post-finish deceleration - physics-based with constant deceleration rate
     if (b.finished && !b.fullyFinished) {
-      const decelElapsed = now - b.finishDecelStartMs;
       // Calculate deceleration as fraction of finish speed per second
       const decelRatePerSec = (b.finishSpeed || b.currentSpeed) / (FINISH_DECELERATION_DURATION_MS / 1000);
       const speedDrop = decelRatePerSec * dtSec;
