@@ -5,16 +5,19 @@ This repository uses [pre-commit](https://pre-commit.com/) to automatically vali
 ## Quick Start
 
 1. **Install pre-commit** (requires Python):
+
    ```bash
    pip install pre-commit
    ```
 
 2. **Install the git hooks**:
+
    ```bash
    pre-commit install
    ```
 
 3. **Make commits as usual** - hooks will run automatically:
+
    ```bash
    git add .
    git commit -m "feat: add new feature"
@@ -25,6 +28,7 @@ This repository uses [pre-commit](https://pre-commit.com/) to automatically vali
 The pre-commit hooks perform the following checks:
 
 ### General File Quality
+
 - **Trailing whitespace**: removes trailing whitespace from files
 - **End of file**: ensures files end with a newline
 - **Line endings**: normalizes to LF (Unix-style)
@@ -33,12 +37,14 @@ The pre-commit hooks perform the following checks:
 - **Case conflicts**: prevents case-sensitive filename issues
 
 ### Language-Specific Checks
+
 - **YAML**: validates syntax in `.yaml` and `.yml` files
 - **JSON**: validates syntax (excludes `package-lock.json`)
 - **JavaScript**: basic syntax validation using JSHint
 - **Markdown**: linting for consistent formatting
 
 ### Branch Protection
+
 - Prevents direct commits to the `main` branch (use feature branches instead)
 
 ## Running Manually
@@ -75,15 +81,19 @@ git commit --no-verify -m "emergency fix"
 ## Troubleshooting
 
 ### Hook fails but I can't see why
+
 Run the specific hook manually to see detailed output:
+
 ```bash
 pre-commit run <hook-name> --all-files
 ```
 
 ### Pre-commit is slow on first run
+
 The first run downloads and caches dependencies for each hook. Subsequent runs are much faster.
 
 ### I want to update the hooks
+
 ```bash
 pre-commit autoupdate
 ```
@@ -91,6 +101,7 @@ pre-commit autoupdate
 ## Philosophy
 
 These hooks are configured to be **non-intrusive** and respect the existing codebase style:
+
 - JSHint is lenient and focuses on catching actual errors, not style preferences
 - Markdown and YAML linting allow existing patterns
 - Hooks that would require code changes to pass are excluded
