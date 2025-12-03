@@ -17,7 +17,7 @@ CI workflows live in `.github/workflows/` (CI, OpenAPI lint, DB migration smoke,
 
 Single-player:
 
-- `index.html` – static scaffold & controls.
+- `single-player-game.html` – static scaffold & controls.
 - `style.css` – layout & visual constants.
 - `sketch.js` – race logic/state/render.
 Multiplayer:
@@ -102,7 +102,7 @@ Multiplayer additions:
 - Server: expand REST endpoints in `server.js`; update `openapi.yaml` accordingly.
 - WebSocket protocol: add new message types with clear payload shape; broadcast via `broadcast(room, msg)`.
 - Client: update `mp-game.js` HUD or track rendering; keep rotation logic lightweight.
-- UI additions: Add button markup in `index.html`, style in `style.css`, bind in `setup()` and implement in `sketch.js`.
+- UI additions: Add button markup in `single-player-game.html`, style in `style.css`, bind in `setup()` and implement in `sketch.js`.
 - New per-horse attributes: Extend object creation in `initializeHorseObjects()`; avoid mutating `horses` (persisted) – use `horseObjects` for runtime fields.
 - Race logic changes: Modify `updateHorses()` (motion) or `checkRaceCompletion()` (finish criteria) – keep separation.
 - Rendering add-ons: Inject into `draw()` respecting game state gating (avoid expensive work outside racing/finished states).
@@ -173,7 +173,7 @@ CI smoke test runs `db/migrate.js` and `db/seed.js` against ephemeral Postgres (
 
 ## Developer Workflows
 
-- Local single-player: open `index.html` in a browser.
+- Local single-player: open `single-player-game.html` in a browser.
 - Local multiplayer server: in `multiplayer-race` run:
  	- `npm ci`
  	- `npm start` (or `node server.js`); set `DATABASE_URL` if using Postgres.

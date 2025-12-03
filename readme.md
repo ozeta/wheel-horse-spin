@@ -3,7 +3,7 @@
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.0-blue)](multiplayer-race/openapi.yaml)
 [![Status](https://img.shields.io/badge/Mode-Single--Player_+_Multiplayer-green)](#summary)
 
-Play single‑player: <https://ozeta.github.io/wheel-horse-spin/>
+Play single‑player: <https://ozeta.github.io/wheel-horse-spin/single-player-game.html>
 
 Multiplayer server: run locally from `multiplayer-race/` (WebSocket + REST + optional Postgres persistence)
 
@@ -87,7 +87,7 @@ Horse roster saved in browser via `localStorage`. To share a lineup, construct a
 
 ## Dev Notes (Single‑Player)
 
-The app is framework-free; p5.js handles rendering/animation. All state lives in memory plus `localStorage`. To change styling or race behavior, edit `sketch.js` and `style.css`. No build step required.
+Launch the local experience via `single-player-game.html`. The app is framework-free; p5.js handles rendering/animation. All state lives in memory plus `localStorage`. To change styling or race behavior, edit `sketch.js` and `style.css`. No build step required.
 
 ## Multiplayer Overview
 

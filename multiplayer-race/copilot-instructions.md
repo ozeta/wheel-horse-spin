@@ -58,7 +58,7 @@ Purpose: Guide AI coding assistants working on the multiplayer layer. Keep code 
 ## Integration Guidance (Client-side)
 
 - When adding the browser adapter, map server events into existing `sketch.js` state transitions without introducing frameworks.
-- Add lobby UI minimally in `index.html`/`style.css`; bind with small helper functions.
+- Add lobby UI minimally in `single-player-game.html`/`style.css`; bind with small helper functions.
 - Use shared constants; keep movement deterministic (base speed + boost). Server may later send corrections.
 
 ## Quality Bar

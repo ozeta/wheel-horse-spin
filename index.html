@@ -6,54 +6,169 @@
     <title>Wheel Horse Spin</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="landing-page">
     <header class="menu-bar">
         <h1>Wheel Horse Spin</h1>
     </header>
-    <main class="main-content">
-        <div id="canvas-container">
-            <!-- p5.js canvas will be inserted here -->
-        </div>
-        <aside class="sidebar">
-            <div class="horse-list-container">
-                <h2>Horses</h2>
-                <ul id="horse-list">
-                    <!-- Horse items will be added here -->
-                </ul>
+    <main class="landing-main">
+        <section class="landing-card">
+            <h2>Single-Player</h2>
+            <p>
+                Classic local race mode rendered with p5.js. Manage your horses, run laps, and
+                export stats directly in the browser.
+            </p>
+            <a class="landing-button" href="single-player-game.html?horses=marco,giacomo,giovanni,maurizio,deba,sooraj">Play Single-Player</a>
+        </section>
+        <section class="landing-card">
+            <h2>Multiplayer</h2>
+            <p>
+                Join the WebSocket lobby, survive the rotating boost key, and avoid being the last
+                human finisher. Requires the Node server from <code>multiplayer-race/</code>.
+            </p>
+            <div class="landing-input-group">
+                <label for="landing-username">Choose a username</label>
+                <input id="landing-username" type="text" placeholder="e.g. BlitzRunner" value="demo" autocomplete="off" />
             </div>
-            <div class="sidebar-buttons">
-                <button id="add-horse">Add Horse</button>
-                <button id="run-race">Run Race</button>
-                <button id="pause-game" style="display:none;">Pause</button>
-                <button id="reset-game" style="display:none;">Reset Game</button>
-                <button id="clear-data">Clear All Data</button>
-                <button id="share-url">Share URL</button>
+            <div class="landing-actions">
+                <a id="landing-open-mp" class="landing-button" href="game.html?room=demo&name=demo">Open Multiplayer Client</a>
+                <a class="landing-link" href="multiplayer-race/README.md">Server setup guide</a>
             </div>
-            <!-- Multiplayer Panel (minimal; hides when not used) -->
-            <div id="multiplayer-panel" style="margin-top:16px; padding:10px; background:#fff; border-radius:8px;">
-                <h2 style="margin-top:0; font-size:18px;">Multiplayer</h2>
-                <div style="display:flex; flex-direction:column; gap:6px;">
-                    <input id="mp-server" placeholder="ws://localhost:8080" style="padding:4px;" />
-                    <input id="mp-room" placeholder="roomId" style="padding:4px;" />
-                    <input id="mp-username" placeholder="username" style="padding:4px;" />
-                    <button id="mp-connect">Connect</button>
-                    <button id="mp-ready" disabled>Ready to Start</button>
-                    <button id="mp-start" disabled style="display:none;">Start (Host)</button>
-                    <div id="mp-countdown" style="font-weight:bold; display:none; background:#0a7020; color:#fff; padding:4px 8px; border-radius:6px;">Countdown: --</div>
-                    <div id="mp-status" style="font-size:12px; color:#333;">Not connected.</div>
-                    <ul id="mp-players" style="list-style:none; padding-left:0; margin:0; font-size:13px; max-height:150px; overflow:auto;"></ul>
-                </div>
-            </div>
-            <div id="github-link">
-                <a href="https://github.com/ozeta/wheel-horse-spin" target="_blank" rel="noopener" title="View on GitHub">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:6px;"><path d="M12 2C6.477 2 2 6.484 2 12.012c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.009-.868-.013-1.703-2.782.605-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.004.07 1.532 1.032 1.532 1.032.892 1.53 2.341 1.089 2.91.833.091-.646.35-1.09.636-1.341-2.221-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.254-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.025A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.747-1.025 2.747-1.025.546 1.378.202 2.396.1 2.65.64.7 1.028 1.595 1.028 2.688 0 3.847-2.337 4.695-4.566 4.944.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.749 0 .268.18.579.688.481C19.138 20.188 22 16.435 22 12.012 22 6.484 17.523 2 12 2Z" fill="#181717"/></svg>
-                    <span style="vertical-align:middle;">ozeta/wheel-horse-spin</span>
-                </a>
-            </div>
-        </aside>
+        </section>
+        <section class="landing-card">
+            <h2>Documentation & Repo</h2>
+            <ul class="landing-list">
+                <li><a href="readme.md">Project README</a></li>
+                <li><a href="multiplayer-race/api-docs.html">REST API (Swagger UI)</a></li>
+                <li><a href="multiplayer-race/DATABASE_SETUP.md">Database setup notes</a></li>
+                <li><a href="https://github.com/ozeta/wheel-horse-spin" target="_blank" rel="noopener">GitHub repository</a></li>
+            </ul>
+        </section>
     </main>
+    <footer class="landing-footer">
+        <span>&copy; Wheel Horse Spin</span>
+    </footer>
+    <style>
+        body.landing-page {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: #f4f5f7;
+            color: #1c1e21;
+        }
+        body.landing-page .menu-bar {
+            position: static;
+            box-shadow: none;
+            height: auto;
+            padding: 24px 0;
+        }
+        .landing-main {
+            flex: 1;
+            display: grid;
+            gap: 24px;
+            padding: 32px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            max-width: 1080px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .landing-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(31, 41, 55, 0.08);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .landing-card h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        .landing-card p {
+            margin: 0;
+            line-height: 1.5;
+        }
+        .landing-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .landing-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .landing-input-group label {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .landing-input-group input {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5f5;
+            font-size: 0.95rem;
+        }
+        .landing-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 18px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .landing-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 18px rgba(37, 99, 235, 0.25);
+        }
+        .landing-link {
+            font-size: 0.95rem;
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .landing-link:hover { text-decoration: underline; }
+        .landing-list {
+            margin: 0;
+            padding: 0 0 0 18px;
+            display: grid;
+            gap: 8px;
+        }
+        .landing-footer {
+            text-align: center;
+            padding: 16px 0 24px;
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+        @media (max-width: 600px) {
+            .landing-main { padding: 20px; }
+            .landing-card { padding: 20px; }
+        }
+    </style>
+    <script>
+        (function updateMultiplayerLink() {
+            const usernameInput = document.getElementById('landing-username');
+            const mpLink = document.getElementById('landing-open-mp');
+            const room = 'demo';
 
-    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.js"></script>
-    <script src="sketch.js"></script>
+            if (!usernameInput || !mpLink) return;
+
+            const buildHref = (rawName) => {
+                const name = (rawName || '').trim() || 'demo';
+                const params = new URLSearchParams({ room, name });
+                return `game.html?${params.toString()}`;
+            };
+
+            const render = () => {
+                mpLink.href = buildHref(usernameInput.value);
+            };
+
+            usernameInput.addEventListener('input', render);
+            usernameInput.addEventListener('change', render);
+            render();
+        })();
+    </script>
 </body>
 </html>
