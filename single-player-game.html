@@ -6,13 +6,15 @@
     <title>Wheel Horse Spin — Single Player</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="single-player-page">
     <header class="menu-bar">
         <h1>Wheel Horse Spin</h1>
     </header>
     <main class="main-content">
-        <div id="canvas-container">
-            <!-- p5.js canvas will be inserted here -->
+        <div class="single-player-track">
+            <div id="canvas-container">
+                <!-- p5.js canvas will be inserted here -->
+            </div>
         </div>
         <aside class="sidebar">
             <div class="horse-list-container">
@@ -28,21 +30,6 @@
                 <button id="reset-game" style="display:none;">Reset Game</button>
                 <button id="clear-data">Clear All Data</button>
                 <button id="share-url">Share URL</button>
-            </div>
-            <!-- Multiplayer Panel (minimal; hides when not used) -->
-            <div id="multiplayer-panel" style="margin-top:16px; padding:10px; background:#fff; border-radius:8px;">
-                <h2 style="margin-top:0; font-size:18px;">Multiplayer</h2>
-                <div style="display:flex; flex-direction:column; gap:6px;">
-                    <input id="mp-server" placeholder="ws://localhost:8080" style="padding:4px;" />
-                    <input id="mp-room" placeholder="roomId" style="padding:4px;" />
-                    <input id="mp-username" placeholder="username" style="padding:4px;" />
-                    <button id="mp-connect">Connect</button>
-                    <button id="mp-ready" disabled>Ready to Start</button>
-                    <button id="mp-start" disabled style="display:none;">Start (Host)</button>
-                    <div id="mp-countdown" style="font-weight:bold; display:none; background:#0a7020; color:#fff; padding:4px 8px; border-radius:6px;">Countdown: --</div>
-                    <div id="mp-status" style="font-size:12px; color:#333;">Not connected.</div>
-                    <ul id="mp-players" style="list-style:none; padding-left:0; margin:0; font-size:13px; max-height:150px; overflow:auto;"></ul>
-                </div>
             </div>
             <div id="github-link">
                 <a href="https://github.com/ozeta/wheel-horse-spin" target="_blank" rel="noopener" title="View on GitHub">

@@ -105,9 +105,15 @@ function setup() {
     shareUrlBtn.addEventListener('click', copyShareableURL);
     pauseGameBtn.addEventListener('click', togglePause);
     // Multiplayer events
-    multiplayer.connectBtn.addEventListener('click', mpConnect);
-    multiplayer.readyBtn.addEventListener('click', mpToggleReady);
-    multiplayer.startBtn.addEventListener('click', mpStartGame);
+    if (multiplayer.connectBtn) {
+        multiplayer.connectBtn.addEventListener('click', mpConnect);
+    }
+    if (multiplayer.readyBtn) {
+        multiplayer.readyBtn.addEventListener('click', mpToggleReady);
+    }
+    if (multiplayer.startBtn) {
+        multiplayer.startBtn.addEventListener('click', mpStartGame);
+    }
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -148,30 +154,41 @@ function isMultiplayerActive() {
 
 function mpConnect() {
     if (multiplayer.connected) return;
+    if (!multiplayer.serverInput || !multiplayer.roomInput || !multiplayer.usernameInput) return;
     const url = (multiplayer.serverInput.value || 'ws://localhost:8080').trim();
     const roomId = (multiplayer.roomInput.value || 'default').trim();
     const username = (multiplayer.usernameInput.value || 'Browser').trim();
     multiplayer.ws = new WebSocket(url);
-    multiplayer.statusDiv.textContent = 'Connecting...';
+    if (multiplayer.statusDiv) {
+        multiplayer.statusDiv.textContent = 'Connecting...';
+    }
     multiplayer.ws.onopen = () => {
         multiplayer.ws.send(JSON.stringify({ type: 'hello', roomId, username, version: 1 }));
         multiplayer.connected = true;
         multiplayer.username = username;
         multiplayer.roomId = roomId;
-        multiplayer.statusDiv.textContent = 'Connected. Waiting for welcome...';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Connected. Waiting for welcome...';
+        }
     };
     multiplayer.ws.onmessage = (ev) => {
         let msg; try { msg = JSON.parse(ev.data); } catch { return; }
         handleMultiplayerMessage(msg);
     };
     multiplayer.ws.onclose = () => {
-        multiplayer.statusDiv.textContent = 'Disconnected.';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Disconnected.';
+        }
         multiplayer.connected = false;
         multiplayer.roomPhase = 'none';
-        multiplayer.startBtn.style.display = 'none';
+        if (multiplayer.startBtn) {
+            multiplayer.startBtn.style.display = 'none';
+        }
     };
     multiplayer.ws.onerror = () => {
-        multiplayer.statusDiv.textContent = 'Connection error.';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Connection error.';
+        }
     };
 }
 
@@ -193,8 +210,12 @@ function handleMultiplayerMessage(msg) {
         case 'welcome': {
             multiplayer.clientId = msg.clientId;
             multiplayer.hostId = msg.hostId;
-            multiplayer.statusDiv.textContent = `Joined room ${msg.roomId} (clientId=${msg.clientId})`;
-            multiplayer.readyBtn.disabled = false;
+            if (multiplayer.statusDiv) {
+                multiplayer.statusDiv.textContent = `Joined room ${msg.roomId} (clientId=${msg.clientId})`;
+            }
+            if (multiplayer.readyBtn) {
+                multiplayer.readyBtn.disabled = false;
+            }
             break;
         }
         case 'roomState': {
@@ -213,13 +234,17 @@ function handleMultiplayerMessage(msg) {
         case 'countdown': {
             multiplayer.roomPhase = 'countdown';
             multiplayer.countdownEndsAt = msg.countdownEndsAt;
-            multiplayer.countdownDiv.style.display = 'block';
+            if (multiplayer.countdownDiv) {
+                multiplayer.countdownDiv.style.display = 'block';
+            }
             break;
         }
         case 'raceStart': {
             multiplayer.roomPhase = 'race';
             multiplayer.raceId = msg.raceId;
-            multiplayer.countdownDiv.style.display = 'none';
+            if (multiplayer.countdownDiv) {
+                multiplayer.countdownDiv.style.display = 'none';
+            }
             gameState = 'racing';
             // Build horseObjects from players + bots
             buildHorseObjectsFromMultiplayer(msg.players, msg.bots);
@@ -246,7 +271,7 @@ function handleMultiplayerMessage(msg) {
                 });
             }
             // Countdown overlay update
-            if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt) {
+            if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt && multiplayer.countdownDiv) {
                 const remaining = Math.max(0, Math.round((multiplayer.countdownEndsAt - Date.now()) / 1000));
                 multiplayer.countdownDiv.textContent = `Countdown: ${remaining}s`;
             }

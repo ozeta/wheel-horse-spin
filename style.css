@@ -73,13 +73,39 @@ body, html {
 }
 
 /* Canvas Container */
+
 #canvas-container {
-    flex-grow: 1; /* Takes up the remaining space */
     display: flex;
     justify-content: center;
     align-items: center;
     padding: 20px;
     overflow: hidden;
+}
+
+.single-player-page .main-content {
+    min-height: 1020px;
+    overflow: auto;
+}
+
+.single-player-page .single-player-track {
+    flex: 1 1 auto;
+    position: relative;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: auto;
+    min-height: 1020px;
+}
+
+.single-player-page .single-player-track,
+.single-player-page #canvas-container {
+    min-width: 1540px;
+    min-height: 1020px;
+}
+
+body.single-player-page {
+    overflow: auto;
 }
 
 /* Sidebar */
