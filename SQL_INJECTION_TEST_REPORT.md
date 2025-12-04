@@ -46,19 +46,29 @@ All database queries in the application use parameterized queries (prepared stat
 ### 3.2 Database Query Security Review
 
 #### Query 1: Player History Lookup
-**Location:** server.js, lines 332-340  
+**Location:** server.js, lines 328-346  
 **Security Status:** ✅ SECURE
 
 ```javascript
-const { rows } = await dbPool.query(`
-  SELECT r.race_timestamp AS ts, rp.final_position AS position, rp.finish_time_seconds AS time,
-         rp.delta_from_winner_seconds AS delta, r.total_participants AS total
-  FROM race_participants rp
-  JOIN races r ON rp.race_id = r.id
-  WHERE rp.username = $1 AND rp.is_bot = false
-  ORDER BY r.race_timestamp DESC
-  LIMIT 20
-`, [username]);
+app.get('/api/leaderboard/player/:username', async (req, res) => {
+  const username = String(req.params.username || '').trim();
+  if (!dbPool || !username) return res.json({ items: [] });
+  try {
+    const { rows } = await dbPool.query(`
+      SELECT r.race_timestamp AS ts, rp.final_position AS position, rp.finish_time_seconds AS time,
+             rp.delta_from_winner_seconds AS delta, r.total_participants AS total
+      FROM race_participants rp
+      JOIN races r ON rp.race_id = r.id
+      WHERE rp.username = $1 AND rp.is_bot = false
+      ORDER BY r.race_timestamp DESC
+      LIMIT 20
+    `, [username]);
+    res.json({ items: rows });
+  } catch (err) {
+    console.error('[api] player error', err);
+    res.json({ items: [] });
+  }
+});
 ```
 
 **Analysis:**

@@ -26,6 +26,8 @@ The REST API implements basic security measures but has several vulnerabilities 
 
 ## 1. API Endpoint Inventory
 
+**Total Endpoints Analyzed:** 10 REST endpoints + static file serving
+
 | Endpoint | Method | Auth | Rate Limit | Input Validation | Status |
 |----------|--------|------|------------|------------------|--------|
 | `/` | GET | None | ✅ Yes | N/A | ⚠️ |
@@ -39,6 +41,8 @@ The REST API implements basic security measures but has several vulnerabilities 
 | `/api/leaderboard/room-loses` | GET | None | ❌ No | ⚠️ Minimal | ❌ |
 | `/api/leaderboard/room-stats` | GET | None | ❌ No | ⚠️ Minimal | ❌ |
 | Static files | GET | None | ❌ No | N/A | ⚠️ |
+
+**Summary:** Only 1 out of 11 routes has rate limiting configured.
 
 ---
 

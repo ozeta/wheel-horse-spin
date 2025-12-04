@@ -31,9 +31,10 @@ app.use('/api/', apiLimiter);
 **Risk:** XSS attacks, data corruption  
 **Solution:**
 
-Install sanitization library:
+Install sanitization libraries (verify package names before installation):
 ```bash
 cd multiplayer-race
+# Note: Verify these packages are maintained and compatible
 npm install validator xss
 ```
 
