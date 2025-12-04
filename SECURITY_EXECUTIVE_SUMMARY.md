@@ -257,6 +257,7 @@ app.get('/api/health', async (req, res) => {
 1. **Install security packages:**
    ```bash
    cd multiplayer-race
+   # Note: Verify package compatibility before installation
    npm install express-rate-limit helmet cors validator xss
    ```
 
