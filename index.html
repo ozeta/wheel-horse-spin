@@ -15,54 +15,54 @@
         <h1>The Wheel Horse Spin Game</h1>
     </header>
     <main class="landing-main">
-        <section class="landing-overview">
-            <article class="landing-overview-card">
+        <section class="landing-row">
+            <article class="landing-card landing-card--full">
                 <h2>Single-Player Sprint</h2>
                 <p><strong>Summary:</strong> Procedural p5.js race you run locally, with customizable horses, dynamic lane geometry, and persistent stats stored in-browser.</p>
                 <p><strong>How to play:</strong> Add up to ten horse names, press <em>Run Race</em>, and watch the leaderboard; pause or reset anytime and use <em>Share URL</em> to invite friends.</p>
                 <p>You can change player names and customize horses before starting the race using the url parameter.</p>
+                <p>
+                    Classic local race mode rendered with p5.js. Manage your horses, run laps, and
+                    export stats directly in the browser.
+                </p>
+                <div class="landing-actions">
+                    <a class="game-link-button" href="single-player-game.html?horses=marco,giacomo,giovanni,maurizio,deba,sooraj">Play Single-Player</a>
+                </div>
             </article>
-            <article class="landing-overview-card">
+        </section>
+        <section class="landing-row">
+            <article class="landing-card landing-card--full">
                 <h2>Multiplayer Arena</h2>
                 <p><strong>Summary:</strong> WebSocket-powered lobby with bots filling empty lanes, rotating boost keys, and Postgres-backed leaderboards tracking wins and last-place tolls.</p>
                 <p><strong>How to play:</strong> Start the Node server in <code>multiplayer-race/</code>, pick a username here, open the client, connect to a room, ready up, and hit boosts as the key rotates every 3 seconds.</p>
+                <p>
+                    Join the WebSocket lobby, survive the rotating boost key, and avoid being the last
+                    human finisher. Requires the Node server from <code>multiplayer-race/</code>.
+                </p>
+                <div class="landing-input-group">
+                    <label for="landing-username">Choose a username</label>
+                    <input id="landing-username" type="text" placeholder="e.g. BlitzRunner" value="demo" autocomplete="off" />
+                </div>
+                <div class="landing-actions">
+                    <a id="landing-open-mp" class="game-link-button" href="game.html?room=demo&name=demo">Open Multiplayer Client</a>
+                </div>
             </article>
         </section>
-        <section class="landing-card">
-            <h2>Single-Player</h2>
-            <p>
-                Classic local race mode rendered with p5.js. Manage your horses, run laps, and
-                export stats directly in the browser.
-            </p>
-            <a class="landing-button" href="single-player-game.html?horses=marco,giacomo,giovanni,maurizio,deba,sooraj">Play Single-Player</a>
-        </section>
-        <section class="landing-card">
-            <h2>Multiplayer</h2>
-            <p>
-                Join the WebSocket lobby, survive the rotating boost key, and avoid being the last
-                human finisher. Requires the Node server from <code>multiplayer-race/</code>.
-            </p>
-            <div class="landing-input-group">
-                <label for="landing-username">Choose a username</label>
-                <input id="landing-username" type="text" placeholder="e.g. BlitzRunner" value="demo" autocomplete="off" />
-            </div>
-            <div class="landing-actions">
-                <a id="landing-open-mp" class="landing-button" href="game.html?room=demo&name=demo">Open Multiplayer Client</a>
-                <a class="landing-link" href="multiplayer-race/README.md">Server setup guide</a>
-            </div>
-        </section>
-        <section class="landing-card">
-            <h2>Documentation & Repo</h2>
-            <ul class="landing-list">
-                <li><a href="readme.md">Project README</a></li>
-                <li><a href="multiplayer-race/api-docs.html">REST API (Swagger UI)</a></li>
-                <li><a href="multiplayer-race/DATABASE_SETUP.md">Database setup notes</a></li>
-                <li><a href="https://github.com/ozeta/wheel-horse-spin" target="_blank" rel="noopener">GitHub repository</a></li>
-            </ul>
+        <section class="landing-row">
+            <article class="landing-card landing-card--full">
+                <h2>Documentation & Repo</h2>
+                <ul class="landing-list">
+                    <li><a href="readme.md">Project README</a></li>
+                    <li><a href="multiplayer-race/README.md">Multiplayer server setup guide</a></li>
+                    <li><a href="multiplayer-race/api-docs.html">REST API (Swagger UI)</a></li>
+                    <li><a href="multiplayer-race/DATABASE_SETUP.md">Database setup notes</a></li>
+                    <li><a href="https://github.com/ozeta/wheel-horse-spin" target="_blank" rel="noopener">GitHub repository</a></li>
+                </ul>
+            </article>
         </section>
     </main>
     <footer class="landing-footer">
-        <span>&copy; Wheel Horse Spin</span>
+        <span>&copy; Wheel Horse Spin - By Marco Carrozzo</span>
     </footer>
     <script>
         (function updateMultiplayerLink() {
