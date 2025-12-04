@@ -238,6 +238,223 @@ body.landing-page .menu-bar {
     z-index: 1;
 }
 
+/* Single-player cyberpunk theme */
+body.single-player-page {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 0, 212, 0.16), transparent 56%),
+        radial-gradient(circle at 88% 28%, rgba(0, 242, 255, 0.16), transparent 60%),
+        linear-gradient(170deg, #05060f 0%, #090d1b 38%, #04060b 100%);
+    color: var(--text-primary);
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    letter-spacing: 0.01em;
+}
+
+body.single-player-page .menu-bar {
+    background: rgba(7, 13, 27, 0.88);
+    border-bottom: 1px solid rgba(0, 242, 255, 0.16);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(16px);
+}
+
+body.single-player-page .menu-bar h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    letter-spacing: 0.14em;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    text-shadow: 0 0 14px rgba(0, 242, 255, 0.65), 0 0 22px rgba(255, 0, 212, 0.35);
+}
+
+body.single-player-page .main-content {
+    background: transparent;
+}
+
+body.single-player-page .single-player-track {
+    margin: 24px clamp(16px, 3vw, 42px);
+    border-radius: 26px;
+    border: 1px solid rgba(0, 242, 255, 0.12);
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.45);
+    background: linear-gradient(160deg, rgba(7, 12, 26, 0.78), rgba(12, 20, 44, 0.78));
+    backdrop-filter: blur(18px);
+}
+
+body.single-player-page #canvas-container {
+    border-radius: 20px;
+    border: 1px solid rgba(0, 242, 255, 0.12);
+    background:
+        linear-gradient(135deg, rgba(0, 242, 255, 0.12), rgba(255, 0, 212, 0.12));
+    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
+}
+
+body.single-player-page .sidebar {
+    background: rgba(14, 20, 40, 0.88);
+    border-left: 1px solid rgba(0, 242, 255, 0.14);
+    color: var(--text-primary);
+    box-shadow: -24px 0 36px rgba(0, 0, 0, 0.45);
+}
+
+body.single-player-page .sidebar h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 0.12em;
+    color: var(--accent-cyan);
+    border-bottom: 1px solid rgba(0, 242, 255, 0.16);
+}
+
+body.single-player-page .horse-list-container {
+    background: rgba(5, 8, 18, 0.4);
+    border: 1px solid rgba(0, 242, 255, 0.08);
+    border-radius: 16px;
+    padding: 10px;
+    box-shadow: inset 0 8px 16px rgba(0, 0, 0, 0.35);
+}
+
+body.single-player-page #horse-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+body.single-player-page .horse-item {
+    background: rgba(10, 15, 32, 0.82);
+    border: 1px solid rgba(0, 242, 255, 0.12);
+    border-radius: 12px;
+    padding: 10px 12px;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+body.single-player-page .horse-item:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 242, 255, 0.3);
+    box-shadow: 0 12px 24px rgba(0, 242, 255, 0.18);
+}
+
+body.single-player-page .horse-avatar {
+    border: 2px solid rgba(0, 242, 255, 0.45);
+    box-shadow: 0 0 14px rgba(0, 242, 255, 0.35);
+}
+
+body.single-player-page .horse-name {
+    font-size: 1rem;
+    letter-spacing: 0.04em;
+}
+
+body.single-player-page .delete-horse-btn {
+    color: var(--accent-magenta);
+    background: rgba(255, 0, 212, 0.08);
+    border-radius: 50%;
+    transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+body.single-player-page .delete-horse-btn:hover {
+    background: rgba(255, 0, 212, 0.22);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(255, 0, 212, 0.45);
+}
+
+body.single-player-page .sidebar-buttons {
+    border-top: 1px solid rgba(0, 242, 255, 0.16);
+}
+
+body.single-player-page .sidebar-buttons button {
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.85), rgba(255, 0, 212, 0.72));
+    color: #04070f;
+    box-shadow: 0 12px 24px rgba(0, 242, 255, 0.22);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+body.single-player-page .sidebar-buttons button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 36px rgba(0, 242, 255, 0.32);
+    filter: brightness(1.05);
+}
+
+body.single-player-page .sidebar-buttons button:focus-visible {
+    outline: 2px solid var(--accent-magenta);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 6px rgba(255, 0, 212, 0.28);
+}
+
+body.single-player-page #run-race {
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.96), rgba(0, 156, 255, 0.92));
+    color: #021018;
+    box-shadow: 0 0 22px rgba(0, 242, 255, 0.55), 0 12px 28px rgba(0, 156, 255, 0.35);
+    border-color: rgba(0, 242, 255, 0.4);
+    animation: runRacePulse 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes runRacePulse {
+    from {
+        box-shadow: 0 0 18px rgba(0, 242, 255, 0.4), 0 8px 20px rgba(0, 156, 255, 0.28);
+        filter: brightness(1);
+    }
+    to {
+        box-shadow: 0 0 32px rgba(0, 242, 255, 0.75), 0 18px 32px rgba(0, 156, 255, 0.45);
+        filter: brightness(1.07);
+    }
+}
+
+body.single-player-page #pause-game {
+    background: linear-gradient(135deg, rgba(127, 139, 173, 0.9), rgba(172, 184, 219, 0.9));
+    color: #09101d;
+}
+
+body.single-player-page #clear-data {
+    background: linear-gradient(135deg, rgba(255, 68, 108, 0.92), rgba(255, 0, 116, 0.88));
+    color: #13060f;
+    box-shadow: 0 12px 26px rgba(255, 54, 120, 0.28);
+}
+
+body.single-player-page #reset-game {
+    background: linear-gradient(135deg, rgba(255, 165, 73, 0.92), rgba(255, 106, 0, 0.88));
+    color: #1a0804;
+    box-shadow: 0 12px 26px rgba(255, 140, 54, 0.28);
+}
+
+body.single-player-page #github-link {
+    opacity: 0.9;
+}
+
+body.single-player-page #github-link a {
+    color: var(--text-primary);
+    background: rgba(0, 242, 255, 0.08);
+    border: 1px solid rgba(0, 242, 255, 0.18);
+    border-radius: 10px;
+    padding: 6px 12px;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+body.single-player-page #github-link a:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 24px rgba(0, 242, 255, 0.24);
+}
+
+body.single-player-page #github-link svg path {
+    fill: var(--text-primary) !important;
+}
+
+body.single-player-page .horse-list-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.single-player-page .horse-list-container::-webkit-scrollbar-track {
+    background: rgba(5, 8, 18, 0.4);
+}
+
+body.single-player-page .horse-list-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 242, 255, 0.4);
+    border-radius: 4px;
+}
+
 @media (max-width: 600px) {
     .landing-main {
         padding: 30px 18px 48px;

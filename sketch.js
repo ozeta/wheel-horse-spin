@@ -121,7 +121,7 @@ function setup() {
 }
 
 function draw() {
-    background(0, 100, 0); // Dark green for infield and outer area
+    drawCyberpunkBackground();
     calculateTrackGeometry();
     drawTrack();
     if (!isMultiplayerActive()) {
@@ -386,9 +386,9 @@ function drawMultiplayerOverlay() {
     // Countdown overlay
     if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt) {
         const remaining = Math.max(0, Math.round((multiplayer.countdownEndsAt - Date.now()) / 1000));
-        fill(0,0,0,120);
+        fill(5, 8, 18, 200);
         rect(0,0,width,height);
-        fill(255);
+        fill(0, 242, 255);
         textAlign(CENTER,CENTER);
         textSize(48);
         text(`Race starts in ${remaining}s`, width/2, height/2);
@@ -550,6 +550,28 @@ function resetGame() {
 
 // --- Drawing Functions ---
 
+function drawCyberpunkBackground() {
+    push();
+    const ctx = drawingContext;
+    ctx.save();
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, 'rgba(0, 114, 140, 0.95)');
+    gradient.addColorStop(0.5, 'rgba(36, 19, 95, 0.92)');
+    gradient.addColorStop(1, 'rgba(120, 10, 130, 0.95)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+    pop();
+
+    push();
+    rectMode(CORNER);
+    noFill();
+    stroke(0, 242, 255, 35);
+    strokeWeight(2);
+    rect(12, 12, width - 24, height - 24, 20);
+    pop();
+}
+
 function calculateTrackGeometry() {
     const numLanes = horses.length > 0 ? horses.length : 1;
     const margin = 40;
@@ -575,31 +597,42 @@ function calculateTrackGeometry() {
 function drawTrack() {
     const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
 
-    const evenLaneColor = color(210, 180, 140); // Lighter brown
-    const oddLaneColor = color(200, 170, 130);  // Slightly darker brown
+    const outerRadius = arcRadius - laneWidth / 2;
 
-    // Draw each lane individually with its correct color
+    push();
+    stroke(0, 242, 255, 28);
+    strokeWeight((laneWidth * numLanes) + 36);
     noFill();
+    arc(leftArcCenter.x, leftArcCenter.y, outerRadius * 2, outerRadius * 2, HALF_PI, PI + HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, outerRadius * 2, outerRadius * 2, PI + HALF_PI, HALF_PI);
+    line(leftArcCenter.x, leftArcCenter.y - outerRadius, rightArcCenter.x, rightArcCenter.y - outerRadius);
+    line(rightArcCenter.x, rightArcCenter.y + outerRadius, leftArcCenter.x, leftArcCenter.y + outerRadius);
+    pop();
+
+    push();
+    noFill();
+    strokeCap(SQUARE);
+    strokeJoin(ROUND);
     strokeWeight(laneWidth);
     for (let i = 0; i < numLanes; i++) {
         const laneRadius = arcRadius - (i * laneWidth) - (laneWidth / 2);
-        const laneColor = i % 2 === 0 ? evenLaneColor : oddLaneColor;
+        const laneColor = i % 2 === 0 ? color(0, 242, 255, 160) : color(0, 140, 190, 160);
 
         if (laneRadius > 0) {
             stroke(laneColor);
-            // Draw the path for the current lane
             arc(leftArcCenter.x, leftArcCenter.y, laneRadius * 2, laneRadius * 2, HALF_PI, PI + HALF_PI);
             arc(rightArcCenter.x, rightArcCenter.y, laneRadius * 2, laneRadius * 2, PI + HALF_PI, HALF_PI);
             line(leftArcCenter.x, leftArcCenter.y - laneRadius, rightArcCenter.x, rightArcCenter.y - laneRadius);
             line(rightArcCenter.x, rightArcCenter.y + laneRadius, leftArcCenter.x, leftArcCenter.y + laneRadius);
         }
     }
+    pop();
 
-    // Draw thin white divider lines on top of the lanes
-    stroke(255, 150); // White, semi-transparent lines
+    push();
+    stroke(0, 220, 255, 180);
     strokeWeight(2);
     noFill();
-     for (let i = 1; i < numLanes; i++) {
+    for (let i = 1; i < numLanes; i++) {
         const dividerRadius = arcRadius - i * laneWidth;
         if (dividerRadius > 0) {
             arc(leftArcCenter.x, leftArcCenter.y, dividerRadius * 2, dividerRadius * 2, HALF_PI, PI + HALF_PI);
@@ -608,24 +641,24 @@ function drawTrack() {
             line(rightArcCenter.x, rightArcCenter.y + dividerRadius, leftArcCenter.x, leftArcCenter.y + dividerRadius);
         }
     }
+    pop();
 
-    // --- Draw Finish Line as a rectangle with chessboard pattern ---
     const finishLineX = leftArcCenter.x;
     const finishLineYStart = leftArcCenter.y - arcRadius;
     const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
     const rectW = FINISH_LINE_WIDTH;
     const rectH = finishLineYEnd - finishLineYStart;
+
+    push();
     noStroke();
     rectMode(CORNERS);
-
-    // Draw chessboard pattern (8x8)
     const tiles = 8;
     const tileW = rectW / tiles;
     const tileH = rectH / tiles;
     for (let row = 0; row < tiles; row++) {
         for (let col = 0; col < tiles; col++) {
-            let isDark = (row + col) % 2 === 1;
-            fill(isDark ? color(181, 136, 99) : color(240, 217, 181));
+            const isDark = (row + col) % 2 === 1;
+            fill(isDark ? color(255, 0, 212, 220) : color(255, 255, 255, 220));
             rect(
                 finishLineX + col * tileW,
                 finishLineYStart + row * tileH,
@@ -634,6 +667,7 @@ function drawTrack() {
             );
         }
     }
+    pop();
 }
 
 function getHorsePosition(horse) {
@@ -681,30 +715,35 @@ function drawHorses() {
         image(horse.img, pos.x, pos.y, avatarSize, avatarSize);
 
         // Draw the horse's name to the right of the avatar
-        fill(0); // Black text
-        noStroke();
+        stroke(5, 8, 18, 180);
+        strokeWeight(3);
+        fill(226, 236, 255);
         textSize(16);
         textAlign(LEFT, CENTER);
         text(horse.name, pos.x + avatarSize / 2 + 5, pos.y);
+        noStroke();
     });
 }
 
 function drawWinnerMessage() {
-    fill(0, 0, 0, 150); // Semi-transparent backdrop
+    push();
     rectMode(CORNER);
+    noStroke();
+    fill(5, 8, 18, 200);
     rect(0, 0, width, height);
 
-    fill(255);
+    fill(0, 242, 255);
     textAlign(CENTER, CENTER);
     const winnerTimeStr = raceElapsedSeconds.toFixed(2);
     const totalTimeStr = overallRaceDurationSeconds.toFixed(2);
     const tieLabel = winner && winner._tie ? ' (tie)' : '';
     textSize(50);
-    // Trophy cup emoji near winner name
     text(`🏆 Winner${tieLabel}: ${winner.name}`, width / 2, height / 2 - 50);
+    fill(226, 236, 255);
     textSize(24);
     text(`Winner Time: ${winnerTimeStr}s`, width / 2, height / 2);
     text(`Total Duration: ${totalTimeStr}s`, width / 2, height / 2 + 40);
+    pop();
 }
 
 // --- Leaderboard ---
@@ -727,12 +766,15 @@ function drawLeaderboard() {
     const x = (width - boxWidth) / 2;
     const y = (height - boxHeight) / 2;
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 210);
-    rect(x, y, boxWidth, boxHeight, 12);
+    stroke(0, 242, 255, 120);
+    strokeWeight(2);
+    fill(10, 16, 38, 230);
+    rect(x, y, boxWidth, boxHeight, 16);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, CENTER);
     textSize(18);
     textStyle(BOLD);
@@ -741,34 +783,28 @@ function drawLeaderboard() {
     ranked.forEach((h, i) => {
         const yTop = y + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
+        const rankStr = (i + 1).toString().padStart(2, '0');
+        const rightInfo = h.finished ? `${h.finishSeconds.toFixed(2)}s` : '...';
 
-        // Color logic top 3 of current ranking
-        let rowColor;
-        if (i === 0) rowColor = color(255, 215, 0); // Gold
-        else if (i === 1) rowColor = color(192); // Silver
-        else if (i === 2) rowColor = color(184, 115, 51); // Copper
-        else rowColor = color(255); // White
+        fill(18, 26, 56, 180);
+        rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
 
-        // Text
+        fill(225, 235, 255);
         textAlign(LEFT, CENTER);
         textSize(16);
         textStyle(NORMAL);
-        fill(30);
-        const rankStr = (i + 1).toString().padStart(2, '0');
-        let rightInfo = h.finished ? `${h.finishSeconds.toFixed(2)}s` : '...';
-        // Background row accent (optional subtle)
-        fill(230);
-        rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
-        fill(30);
-        text(`${rankStr}. ${h.name}`, x + padding + 8, centerY - 2);
+        text(`${rankStr}. ${h.name}`, x + padding + 12, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(rightInfo, x + boxWidth - padding - 8, centerY - 2);
-        // Draw a small colored bullet for top3
+        text(rightInfo, x + boxWidth - padding - 12, centerY - 2);
+
         if (i < 3) {
-            fill(rowColor);
-            ellipse(x + padding + 4, centerY - 2, 10, 10);
+            const bulletColors = [color(0, 242, 255), color(173, 209, 255), color(255, 0, 212)];
+            fill(bulletColors[i]);
+            ellipse(x + padding + 6, centerY - 2, 10, 10);
         }
     });
+
+    pop();
 }
 
 // --- Final Leaderboard (Post-Race) ---
@@ -784,12 +820,15 @@ function drawFinalLeaderboard() {
     const boxX = (width - boxWidth) / 2;
     const boxY = (height / 2) + 90; // below overlay winner text
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 215);
-    rect(boxX, boxY, boxWidth, boxHeight, 14);
+    stroke(255, 0, 212, 120);
+    strokeWeight(2);
+    fill(12, 18, 48, 230);
+    rect(boxX, boxY, boxWidth, boxHeight, 18);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, CENTER);
     textSize(20);
     textStyle(BOLD);
@@ -798,34 +837,31 @@ function drawFinalLeaderboard() {
     ranked.forEach((h, i) => {
         const yTop = boxY + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
-        let colorFill;
-        if (i === 0) colorFill = color(255, 215, 0); // Gold
-        else if (i === 1) colorFill = color(192); // Silver
-        else if (i === 2) colorFill = color(184, 115, 51); // Copper
-        else colorFill = color(255);
-
         const rankStr = (i + 1).toString().padStart(2, '0');
         const timeStr = h.finishSeconds.toFixed(2) + 's' + (winner._tie && h.finishSeconds === winnerTime ? ' (tie)' : '');
         const delta = h.finishSeconds - winnerTime;
         const deltaStr = (delta === 0 ? '+0.00s' : `+${delta.toFixed(2)}s`);
 
-        // Row background
-        fill(230);
+        fill(18, 28, 60, 190);
         rect(boxX + padding, centerY - 14, boxWidth - padding * 2, 28, 8);
-        // Colored bullet for top3
+
         if (i < 3) {
-            fill(colorFill);
-            ellipse(boxX + padding + 12, centerY - 0, 14, 14);
+            const badgeColors = [color(0, 242, 255), color(173, 209, 255), color(255, 0, 212)];
+            fill(badgeColors[i]);
+            ellipse(boxX + padding + 14, centerY, 14, 14);
         }
-        fill(30);
+
+        fill(226, 236, 255);
         textAlign(LEFT, CENTER);
         textSize(16);
-        text(`${rankStr}. ${h.name}`, boxX + padding + 30, centerY - 2);
+        text(`${rankStr}. ${h.name}`, boxX + padding + 36, centerY - 2);
         textAlign(CENTER, CENTER);
         text(timeStr, boxX + boxWidth / 2, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(deltaStr, boxX + boxWidth - padding - 12, centerY - 2);
+        text(deltaStr, boxX + boxWidth - padding - 16, centerY - 2);
     });
+
+    pop();
 }
 
 // --- Data Persistence & Horse Management ---
@@ -941,12 +977,15 @@ function drawResultsYamlPanel() {
         justCopied: prevMeta.justCopied || null
     };
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 220);
-    rect(boxX, boxY, boxWidth, boxHeight, 10);
+    stroke(0, 242, 255, 120);
+    strokeWeight(2);
+    fill(10, 16, 38, 230);
+    rect(boxX, boxY, boxWidth, boxHeight, 14);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, TOP);
     textSize(16);
     textStyle(BOLD);
@@ -954,6 +993,7 @@ function drawResultsYamlPanel() {
     textStyle(NORMAL);
     textSize(14);
     textFont('monospace');
+    fill(226, 236, 255);
     lines.forEach((ln, i) => {
         text(ln, boxX + padding, boxY + padding + lineHeight * (i + 1));
     });
@@ -963,21 +1003,19 @@ function drawResultsYamlPanel() {
     const clickedRecently = window._yamlPanelMeta.justCopied && (millis() - window._yamlPanelMeta.justCopied < 900);
     let btnColor;
     if (clickedRecently) {
-        // Confirmation color (greenish)
-        btnColor = color(40, 160, 70);
+        btnColor = color(0, 214, 170);
     } else if (isHover) {
-        // Hover color (brighter blue)
-        btnColor = color(55, 145, 230);
+        btnColor = color(255, 0, 212);
     } else {
-        // Normal color
-        btnColor = color(40, 120, 200);
+        btnColor = color(0, 242, 255);
     }
     fill(btnColor);
     rect(copyBtnX, copyBtnY, copyBtnWidth, copyBtnHeight, 6);
-    fill(255);
+    fill(12, 18, 40);
     textAlign(CENTER, CENTER);
     textSize(14);
     text(clickedRecently ? 'Copied' : 'Copy', copyBtnX + copyBtnWidth / 2, copyBtnY + copyBtnHeight / 2);
+    pop();
 }
 
 // Handle copy button click
