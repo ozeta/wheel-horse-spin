@@ -455,6 +455,274 @@ body.single-player-page .horse-list-container::-webkit-scrollbar-thumb {
     border-radius: 4px;
 }
 
+/* Multiplayer cyberpunk styling */
+body.multiplayer-page {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(255, 0, 212, 0.15), transparent 55%),
+        radial-gradient(circle at 88% 26%, rgba(0, 242, 255, 0.14), transparent 60%),
+        linear-gradient(170deg, #04060b 0%, #0a1329 42%, #03040a 100%);
+    color: var(--text-primary);
+    font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+    letter-spacing: 0.01em;
+}
+
+body.multiplayer-page header {
+    background: rgba(7, 13, 26, 0.9);
+    border-bottom: 1px solid rgba(0, 242, 255, 0.18);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(14px);
+    padding: 22px 16px;
+    text-align: center;
+}
+
+body.multiplayer-page header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.8rem, 3vw, 2.6rem);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    text-shadow: 0 0 16px rgba(0, 242, 255, 0.65), 0 0 26px rgba(255, 0, 212, 0.35);
+    margin: 0;
+}
+
+body.multiplayer-page main {
+    background: transparent;
+}
+
+body.multiplayer-page #lobby {
+    background: rgba(10, 16, 34, 0.88);
+    border-right: 1px solid rgba(0, 242, 255, 0.14);
+    box-shadow: inset -8px 0 24px rgba(0, 0, 0, 0.35);
+    color: var(--text-primary);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    backdrop-filter: blur(12px);
+}
+
+body.multiplayer-page #lobby h2,
+body.multiplayer-page #lobby h3,
+body.multiplayer-page #lobby h4 {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-cyan);
+    margin: 8px 0 6px;
+}
+
+body.multiplayer-page #status,
+body.multiplayer-page #lb-note,
+body.multiplayer-page #lb-health {
+    color: var(--text-muted) !important;
+}
+
+body.multiplayer-page #displayServer,
+body.multiplayer-page #displayRoom,
+body.multiplayer-page #countdownHeader {
+    background: rgba(5, 10, 24, 0.65) !important;
+    border: 1px solid rgba(0, 242, 255, 0.22) !important;
+    padding: 8px 10px !important;
+    border-radius: 10px !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 0.08em;
+    color: var(--text-primary) !important;
+}
+
+body.multiplayer-page #countdownHeader {
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.75), rgba(255, 0, 212, 0.6)) !important;
+    color: #05101c !important;
+}
+
+body.multiplayer-page button {
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.76rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 9px 14px;
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.85), rgba(0, 140, 255, 0.78));
+    color: #03141c;
+    box-shadow: 0 12px 26px rgba(0, 242, 255, 0.22);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+body.multiplayer-page button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px rgba(0, 242, 255, 0.3);
+    filter: brightness(1.05);
+}
+
+body.multiplayer-page button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: saturate(0.6);
+}
+
+body.multiplayer-page #readyBtn {
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.9), rgba(0, 180, 255, 0.85));
+    box-shadow: 0 0 16px rgba(0, 242, 255, 0.55);
+}
+
+body.multiplayer-page #startBtn,
+body.multiplayer-page #resetBtn {
+    background: linear-gradient(135deg, rgba(255, 0, 212, 0.82), rgba(153, 0, 195, 0.78));
+    color: #150312;
+    box-shadow: 0 14px 30px rgba(255, 0, 212, 0.28);
+}
+
+body.multiplayer-page #toggleMusic {
+    background: linear-gradient(135deg, rgba(243, 230, 0, 0.92), rgba(217, 186, 0, 0.85)) !important;
+    color: #2b2100 !important;
+    box-shadow: 0 12px 28px rgba(243, 230, 0, 0.35) !important;
+}
+
+body.multiplayer-page #readyBtn.ready-active {
+    animation: readyGlow 2.2s ease-in-out infinite alternate;
+}
+
+body.multiplayer-page #startBtn.start-active {
+    animation: startGlow 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes readyGlow {
+    from {
+        box-shadow: 0 0 16px rgba(0, 242, 255, 0.45), 0 12px 24px rgba(0, 160, 255, 0.25);
+        filter: brightness(1);
+    }
+    to {
+        box-shadow: 0 0 32px rgba(0, 242, 255, 0.8), 0 18px 32px rgba(0, 160, 255, 0.4);
+        filter: brightness(1.05);
+    }
+}
+
+@keyframes startGlow {
+    from {
+        box-shadow: 0 0 18px rgba(255, 0, 212, 0.45), 0 14px 30px rgba(200, 0, 170, 0.35);
+        filter: brightness(1);
+    }
+    to {
+        box-shadow: 0 0 34px rgba(255, 0, 212, 0.8), 0 20px 36px rgba(200, 0, 170, 0.5);
+        filter: brightness(1.06);
+    }
+}
+
+body.multiplayer-page #leaderboardWrap {
+    background: rgba(5, 9, 20, 0.5);
+    border: 1px solid rgba(0, 242, 255, 0.16);
+    border-radius: 14px;
+    padding: 12px;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.35);
+}
+
+body.multiplayer-page #leaderboardWrap h3,
+body.multiplayer-page #leaderboardWrap h4 {
+    color: var(--accent-magenta);
+    font-size: 1.05rem;
+}
+
+body.multiplayer-page #leaderboardWrap table {
+    background: rgba(7, 12, 26, 0.85);
+    color: var(--text-primary);
+    border: 1px solid rgba(0, 242, 255, 0.1);
+    font-size: 0.95rem;
+}
+
+body.multiplayer-page #leaderboardWrap th {
+    background: rgba(0, 242, 255, 0.12) !important;
+    color: var(--text-primary);
+}
+
+body.multiplayer-page #leaderboardWrap td,
+body.multiplayer-page #leaderboardWrap th {
+    border-color: rgba(0, 242, 255, 0.08) !important;
+    padding: 10px 12px;
+}
+
+body.multiplayer-page #leaderboardWrap tr:nth-child(even) {
+    background: rgba(0, 242, 255, 0.04);
+}
+
+body.multiplayer-page a {
+    color: var(--accent-cyan);
+}
+
+body.multiplayer-page #lb-note,
+body.multiplayer-page #commitSha {
+    color: rgba(127, 164, 255, 0.8) !important;
+}
+
+body.multiplayer-page #player-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+body.multiplayer-page #player-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(6, 10, 22, 0.85);
+    border: 1px solid rgba(0, 242, 255, 0.14);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.35);
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    letter-spacing: 0.05em;
+    position: relative;
+    overflow: hidden;
+}
+
+body.multiplayer-page #player-list li::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 12px rgba(0, 242, 255, 0.6);
+    margin-right: 12px;
+}
+
+body.multiplayer-page #player-list li::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 242, 255, 0.1), rgba(255, 0, 212, 0.1));
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+body.multiplayer-page #player-list li:hover::after {
+    opacity: 1;
+}
+
+body.multiplayer-page #player-list li span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+body.multiplayer-page #lobby::-webkit-scrollbar {
+    width: 8px;
+}
+
+body.multiplayer-page #lobby::-webkit-scrollbar-track {
+    background: rgba(5, 8, 18, 0.4);
+}
+
+body.multiplayer-page #lobby::-webkit-scrollbar-thumb {
+    background: rgba(0, 242, 255, 0.45);
+    border-radius: 4px;
+}
+
 @media (max-width: 600px) {
     .landing-main {
         padding: 30px 18px 48px;

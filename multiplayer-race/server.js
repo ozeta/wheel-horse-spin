@@ -67,7 +67,7 @@ const INPUT_KEY = 'E';
 const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 8;
-const COUNTDOWN_SECONDS = 1;
+const COUNTDOWN_SECONDS = 3;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 2.0; // increased from 1.4 for more noticeable boost

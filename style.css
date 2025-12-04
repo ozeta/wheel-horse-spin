@@ -1,7 +1,7 @@
 body { display:flex; flex-direction:column; font-family:Arial,sans-serif; }
 header { padding:5px 8px; background:#222; color:#fff; }
 main { display:flex; flex:1; min-height:0; }
-#lobby { width:380px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; position:relative; }
+#lobby { width:480px; flex:0 0 480px; padding:14px; background:#f9f9f9; border-right:1px solid #ddd; overflow-y:auto; position:relative; }
 /* Scroll fade cues */
 #lobby::before, #lobby::after {
     content:''; position:sticky; left:0; right:0; display:block; height:14px; pointer-events:none; z-index:1;
@@ -11,8 +11,6 @@ main { display:flex; flex:1; min-height:0; }
 #lobby.at-top::before { opacity:0; }
 #lobby.at-bottom::after { opacity:0; }
 #lobby h2 { margin:0 0 10px; font-size:20px; }
-#player-list { list-style:none; padding:0; margin:0; }
-#player-list li { padding:6px 8px; border:1px solid #ccc; border-radius:6px; margin-bottom:6px; background:#fff; font-size:13px; }
 #status { font-size:12px; margin-top:6px; color:#333; }
 #countdownDisplay { font-size:22px; font-weight:bold; margin:10px 0; }
 #raceCanvasWrap { flex:1 1 0%; position:relative; min-width: 0; }

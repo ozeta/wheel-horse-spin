@@ -7,8 +7,12 @@
   <!-- <meta name="mp-server-url" content="wss://your-backend.onrender.com" /> -->
   <title>Wheel Horse Spin Multiplayer</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="cyberpunk.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet" />
 </head>
-<body>
+<body class="multiplayer-page">
   <header><h1>Wheel Horse Spin Multiplayer</h1></header>
   <main>
     <section id="lobby">
@@ -19,6 +23,7 @@
         <button id="readyBtn" disabled>Ready to Start</button>
         <button id="startBtn" style="display:none;" disabled>Start Game (Host)</button>
         <button id="resetBtn" style="display:none;" disabled>Reset Game (Host)</button>
+        <button id="toggleMusic">Play Synthwave</button>
         <div id="countdownHeader" style="display:none; background:#0a7020; color:#fff; padding:6px 10px; border-radius:6px; font-weight:bold;">Countdown: --</div>
         <div id="status">Not connected.</div>
         <ul id="player-list"></ul>
@@ -79,9 +84,9 @@
     // Minimal table styles for leaderboards
     const styleEl = document.createElement('style');
     styleEl.textContent = `
-      .lb-table{width:100%;border-collapse:collapse}
-      .lb-table th,.lb-table td{border:1px solid #ddd;padding:6px}
-      .lb-table th{background:#f4f4f6;text-align:left}
+      .lb-table{width:100%;border-collapse:collapse;font-size:0.95rem}
+      .lb-table th,.lb-table td{border:1px solid #ddd;padding:10px 12px}
+      .lb-table th{background:#f4f4f6;text-align:left;font-size:1rem}
       .lb-table tr:nth-child(even){background:#ededed;}
       .lb-num{text-align:right; width:1%; white-space:nowrap;}
       .lb-rank{width:24px;text-align:right}
@@ -250,9 +255,6 @@
 
       const rowsHtml = [
         { label: 'Total races', value: fmtNumber(stats.total_races) },
-        { label: 'Total human starts', value: fmtNumber(stats.total_human_starts) },
-        { label: 'Unique humans', value: fmtNumber(stats.unique_humans) },
-        { label: 'Avg humans per race', value: fmtNumber(stats.avg_humans_per_race, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) },
         { label: 'Avg duration', value: fmtSeconds(stats.avg_duration_seconds) },
       ].map(row => `<tr><th scope="row">${row.label}</th><td class="lb-num">${row.value}</td></tr>`).join('');
 
