@@ -25,13 +25,19 @@ node server.js
 
 ### Enable Database Leaderboards
 
-If you set `DATABASE_URL`, the server will:
+If you set `DATABASE_URL` (environment variable or `.env` in this folder), the server will:
 
 - Auto-run migrations on startup (idempotent)
 - Save race results at the end of each race
 - Serve leaderboard APIs
 
 ```zsh
+# Option A: use .env (loaded automatically by npm scripts)
+cp .env.example .env
+# edit DATABASE_URL inside .env, then run
+npm run dev
+
+# Option B: export manually for one-off sessions
 export DATABASE_URL="postgresql://username:password@host:port/dbname"
 npm start
 ```

@@ -6,7 +6,7 @@ Keep the project framework-free, lightweight, and easily readable. Favor small, 
 
 ## Project Structure
 
-- Single-player logic lives in `sketch.js` with UI in `index.html` and styles in `style.css`.
+- Single-player logic lives in `sketch.js` with UI in `single-player-game.html` and styles in `style.css`.
 - Multiplayer server & docs are in `multiplayer-race/` (WebSocket + REST + optional Postgres persistence).
 - Shared multiplayer client canvas logic in `mp-game.js`.
 - OpenAPI spec at `multiplayer-race/openapi.yaml` with HTML viewer `multiplayer-race/api-docs.html`.

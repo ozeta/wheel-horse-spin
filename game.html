@@ -7,8 +7,12 @@
   <!-- <meta name="mp-server-url" content="wss://your-backend.onrender.com" /> -->
   <title>Wheel Horse Spin Multiplayer</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="cyberpunk.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet" />
 </head>
-<body>
+<body class="multiplayer-page">
   <header><h1>Wheel Horse Spin Multiplayer</h1></header>
   <main>
     <section id="lobby">
@@ -19,6 +23,7 @@
         <button id="readyBtn" disabled>Ready to Start</button>
         <button id="startBtn" style="display:none;" disabled>Start Game (Host)</button>
         <button id="resetBtn" style="display:none;" disabled>Reset Game (Host)</button>
+        <button id="toggleMusic">Play Synthwave</button>
         <div id="countdownHeader" style="display:none; background:#0a7020; color:#fff; padding:6px 10px; border-radius:6px; font-weight:bold;">Countdown: --</div>
         <div id="status">Not connected.</div>
         <ul id="player-list"></ul>
@@ -35,7 +40,13 @@
           <span id="lb-health" style="font-size:11px; color:#666;">checking…</span>
         </div>
         <div id="leaderboardWrap" style="display:block; margin-top:8px;">
-          <h3 style="margin:8px 0 6px; font-size:16px;">Room Summary</h3>
+          <h3 style="margin:8px 0 6px; font-size:16px;">Room Stats</h3>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:320px;">
+              <div id="lb-room-stats" style="font-size:12px;"></div>
+            </div>
+          </div>
+          <h3 style="margin:12px 0 6px; font-size:16px;">Room Summary</h3>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">
             <div style="flex:1; min-width:320px;">
               <div id="lb-room-summary" style="font-size:12px;"></div>
@@ -73,9 +84,9 @@
     // Minimal table styles for leaderboards
     const styleEl = document.createElement('style');
     styleEl.textContent = `
-      .lb-table{width:100%;border-collapse:collapse}
-      .lb-table th,.lb-table td{border:1px solid #ddd;padding:6px}
-      .lb-table th{background:#f4f4f6;text-align:left}
+      .lb-table{width:100%;border-collapse:collapse;font-size:0.95rem}
+      .lb-table th,.lb-table td{border:1px solid #ddd;padding:10px 12px}
+      .lb-table th{background:#f4f4f6;text-align:left;font-size:1rem}
       .lb-table tr:nth-child(even){background:#ededed;}
       .lb-num{text-align:right; width:1%; white-space:nowrap;}
       .lb-rank{width:24px;text-align:right}
@@ -96,6 +107,14 @@
       .lb-modal-close{position:absolute;top:12px;right:18px;font-size:18px;color:#333;cursor:pointer;}
     `;
     document.head.appendChild(styleEl);
+
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
 
     function renderRoomSummaryTable(items){
       const container = document.getElementById('lb-room-summary');
@@ -218,14 +237,63 @@
           <tbody>${rows}</tbody>
         </table>`;
     }
-    async function fetchJSON(url) {
-      try { const r = await fetch(url); return await r.json(); } catch { return { items: [] }; }
+    function renderRoomStats(stats, roomId){
+      const container = document.getElementById('lb-room-stats');
+      if (!container) return;
+      const roomLabel = roomId ? `&quot;${escapeHtml(roomId)}&quot;` : 'this room';
+      if (!stats || !stats.total_races) {
+        container.innerHTML = `<p style="color:#666;font-style:italic">No race history yet for ${roomLabel}.</p>`;
+        return;
+      }
+      const fmtNumber = (value, opts) => (typeof value === 'number' && Number.isFinite(value))
+        ? value.toLocaleString(undefined, opts || {})
+        : '—';
+      const fmtSeconds = (value) => (typeof value === 'number' && Number.isFinite(value))
+        ? `${value.toFixed(2)}s`
+        : '—';
+      const fmtTimestamp = (value) => value ? new Date(value).toLocaleString() : '—';
+
+      const rowsHtml = [
+        { label: 'Total races', value: fmtNumber(stats.total_races) },
+        { label: 'Avg duration', value: fmtSeconds(stats.avg_duration_seconds) },
+      ].map(row => `<tr><th scope="row">${row.label}</th><td class="lb-num">${row.value}</td></tr>`).join('');
+
+      const detailLines = [];
+      if (stats.last_race) {
+        const winner = stats.last_race.winner_username ? escapeHtml(stats.last_race.winner_username) : '—';
+        detailLines.push(`<div><strong>Latest win:</strong> ${winner} (${fmtSeconds(stats.last_race.winner_time_seconds)})</div>`);
+        detailLines.push(`<div style="color:#666;">${fmtTimestamp(stats.last_race.race_timestamp)}</div>`);
+      }
+      if (stats.fastest_win) {
+        const fastest = stats.fastest_win.winner_username ? escapeHtml(stats.fastest_win.winner_username) : '—';
+        detailLines.push(`<div style="margin-top:${detailLines.length ? 4 : 0}px;"><strong>Fastest win:</strong> ${fastest} (${fmtSeconds(stats.fastest_win.winner_time_seconds)})</div>`);
+        detailLines.push(`<div style="color:#666;">${fmtTimestamp(stats.fastest_win.race_timestamp)}</div>`);
+      }
+
+      container.innerHTML = `
+        <table class="lb-table" aria-label="Room Stats">
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div style="font-size:11px;color:#333;margin-top:6px;">${detailLines.length ? detailLines.join('') : '<em style="color:#666;">No winner data recorded yet.</em>'}</div>
+        <div style="font-size:11px;color:#666;margin-top:4px;">Data for ${roomLabel}.</div>
+      `;
+    }
+    async function fetchJSON(url, fallback = { items: [] }) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`Request failed: ${r.status}`);
+        return await r.json();
+      } catch {
+        return fallback;
+      }
     }
     async function refreshLeaderboards() {
       // Robust room detection (fallback to URL param if MP.room not yet set)
       const urlParams = new URLSearchParams(window.location.search);
       const detectedRoom = (window.MP && MP.room) || urlParams.get('room') || 'dev';
       const room = `?room=${encodeURIComponent(detectedRoom)}`;
+      const statsData = await fetchJSON(`/api/leaderboard/room-stats${room}`, { stats: null });
+      renderRoomStats(statsData.stats, detectedRoom);
       const data = await fetchJSON(`/api/leaderboard/room-summary${room}`);
       renderRoomSummaryTable(data.items || []);
 

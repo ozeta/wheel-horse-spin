@@ -15,6 +15,8 @@
 //    node thin-client.js ws://localhost:8080 roomId=dev username=Alice
 //    node thin-client.js ws://localhost:8080 roomId=dev username=Bob
 
+require('dotenv').config();
+
 const http = require('http');
 const express = require('express');
 const RateLimit = require('express-rate-limit');
@@ -65,7 +67,7 @@ const INPUT_KEY = 'E';
 const DEFAULT_PLAYERS = 2;
 const MAX_PLAYERS = 6; // humans
 const TOTAL_LANES = 8;
-const COUNTDOWN_SECONDS = 1;
+const COUNTDOWN_SECONDS = 3;
 // Tick frequency: higher values yield smoother client updates (at cost of bandwidth)
 const TICK_RATE_HZ = 60;
 const BOOST_FACTOR = 2.0; // increased from 1.4 for more noticeable boost
@@ -470,6 +472,79 @@ app.get('/api/leaderboard/room-loses', async (req, res) => {
   } catch (err) {
     console.error('[api] room-loses error', err);
     res.json({ items: [] });
+  }
+});
+
+// Room aggregate stats
+app.get('/api/leaderboard/room-stats', async (req, res) => {
+  if (!dbPool) return res.json({ room: null, stats: null });
+  const room = (req.query.room && String(req.query.room).trim()) || null;
+  if (!room) return res.json({ room: null, stats: null });
+  try {
+    const baseSql = `
+      SELECT
+        COUNT(*)::INT AS total_races,
+        MAX(race_timestamp) AS last_race_ts,
+        AVG(human_players_count)::FLOAT AS avg_humans,
+        AVG(race_duration_seconds)::FLOAT AS avg_duration_seconds,
+        SUM(human_players_count)::INT AS total_human_starts
+      FROM races
+      WHERE room_id = $1
+    `;
+    const baseRes = await dbPool.query(baseSql, [room]);
+    const baseRow = baseRes.rows[0] || {};
+
+    const uniqueSql = `
+      SELECT COUNT(DISTINCT rp.username)::INT AS unique_humans
+      FROM race_participants rp
+      JOIN races r ON r.id = rp.race_id
+      WHERE r.room_id = $1 AND rp.is_bot = FALSE
+    `;
+    const uniqueRes = await dbPool.query(uniqueSql, [room]);
+    const uniqueRow = uniqueRes.rows[0] || {};
+
+    const lastWinnerSql = `
+      SELECT winner_username, winner_time_seconds, race_timestamp
+      FROM races
+      WHERE room_id = $1
+      ORDER BY race_timestamp DESC
+      LIMIT 1
+    `;
+    const lastWinnerRes = await dbPool.query(lastWinnerSql, [room]);
+    const lastWinnerRow = lastWinnerRes.rows[0] || null;
+
+    const fastestSql = `
+      SELECT winner_username, winner_time_seconds, race_timestamp
+      FROM races
+      WHERE room_id = $1
+      ORDER BY winner_time_seconds ASC
+      LIMIT 1
+    `;
+    const fastestRes = await dbPool.query(fastestSql, [room]);
+    const fastestRow = fastestRes.rows[0] || null;
+
+    const stats = {
+      total_races: baseRow.total_races != null ? Number(baseRow.total_races) : 0,
+      total_human_starts: baseRow.total_human_starts != null ? Number(baseRow.total_human_starts) : 0,
+      unique_humans: uniqueRow.unique_humans != null ? Number(uniqueRow.unique_humans) : 0,
+      avg_humans_per_race: baseRow.avg_humans != null ? Number(baseRow.avg_humans) : 0,
+      avg_duration_seconds: baseRow.avg_duration_seconds != null ? Number(baseRow.avg_duration_seconds) : 0,
+      last_race: lastWinnerRow ? {
+        winner_username: lastWinnerRow.winner_username || null,
+        winner_time_seconds: lastWinnerRow.winner_time_seconds != null ? Number(lastWinnerRow.winner_time_seconds) : null,
+        race_timestamp: lastWinnerRow.race_timestamp || null,
+      } : null,
+      fastest_win: fastestRow ? {
+        winner_username: fastestRow.winner_username || null,
+        winner_time_seconds: fastestRow.winner_time_seconds != null ? Number(fastestRow.winner_time_seconds) : null,
+        race_timestamp: fastestRow.race_timestamp || null,
+      } : null,
+    };
+
+    res.json({ room, stats });
+  } catch (err) {
+    console.error('[api] room-stats error', err);
+    res.json({ room, stats: null });
   }
 });
 

@@ -16,9 +16,36 @@ const MP = {
   username: null,
 };
 
+const synthwave = {
+  context: null,
+  masterGain: null,
+  bassGain: null,
+  leadGain: null,
+  drumGain: null,
+  noiseBuffer: null,
+  isPlaying: false,
+  tempo: 0,
+  beatDuration: 0,
+  nextNoteTime: 0,
+  stepIndex: 0,
+  schedulerId: null,
+  bassPattern: [],
+  leadPattern: [],
+  hatPattern: [],
+  snareSteps: [],
+  scale: [],
+  kickGain: null,
+  kickPattern: [],
+  padGain: null,
+  padFilter: null,
+  padVoices: [],
+  chordIndex: 0,
+  lastMeasureTarget: 0,
+};
+
 // DOM references
 let displayServer, displayRoom, connectBtn, readyBtn, startBtn, resetBtn,
-    playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
+    toggleMusicBtn, playerListUL, statusDiv, countdownHeader, renameWrap, renameInput, renameBtn,
     raceOverlay, lobbySection, resultsWrap, finalList;
 // Config captured from URL or defaults
 // Derive server URL: same-origin WebSocket by default (works locally and on Render)
@@ -35,6 +62,7 @@ window.addEventListener('DOMContentLoaded', () => {
   readyBtn = document.getElementById('readyBtn');
   startBtn = document.getElementById('startBtn');
   resetBtn = document.getElementById('resetBtn');
+  toggleMusicBtn = document.getElementById('toggleMusic');
   playerListUL = document.getElementById('player-list');
   statusDiv = document.getElementById('status');
   countdownHeader = document.getElementById('countdownHeader');
@@ -71,6 +99,10 @@ window.addEventListener('DOMContentLoaded', () => {
   startBtn.addEventListener('click', startGame); // host only
   resetBtn.addEventListener('click', resetGame); // host only
   renameBtn.addEventListener('click', doRename);
+  if (toggleMusicBtn) {
+    toggleMusicBtn.addEventListener('click', toggleSynthwave);
+    updateToggleMusicButton();
+  }
 
   // Auto-connect if both room and name provided in URL
   if (roomParam && nameParam) {
@@ -112,6 +144,10 @@ function connectMP() {
     statusDiv.textContent = 'Disconnected.';
     MP.connected = false;
     MP.phase = 'lobby';
+    countdownBoostPrimed = false;
+    boostKeyInitialized = false;
+    scheduleNextBoostKeyRotation(Number.POSITIVE_INFINITY);
+    localPlayerFinished = false;
   };
   MP.ws.onerror = () => { statusDiv.textContent = 'Connection error.'; };
 }
@@ -136,6 +172,9 @@ function handleMessage(msg) {
         raceOverlay.style.display = 'none';
         if (lobbySection) lobbySection.style.display = 'block';
         if (resultsWrap) resultsWrap.style.display = 'none';
+        countdownBoostPrimed = false;
+        scheduleNextBoostKeyRotation(Number.POSITIVE_INFINITY);
+        localPlayerFinished = false;
       }
       // Refresh leaderboards once we have room state (ensures MP.room is set and connection established)
       try { if (typeof window.refreshLeaderboards === 'function') window.refreshLeaderboards(); } catch {}
@@ -145,12 +184,20 @@ function handleMessage(msg) {
       MP.countdownEndsAt = msg.countdownEndsAt;
       countdownHeader.style.display = 'block';
       if (lobbySection) lobbySection.style.display = 'block';
+      if (!countdownBoostPrimed) {
+        primeBoostKeyForCountdown();
+      } else {
+        scheduleNextBoostKeyRotation(Number.POSITIVE_INFINITY);
+      }
+      localPlayerFinished = false;
+      countdownHeader.textContent = `Countdown: -- (Boost key: ${displayBoostKey(currentBoostKey)})`;
       break;
     case 'raceStart':
       MP.phase = 'race'; countdownHeader.style.display = 'none'; raceOverlay.style.display = 'none';
       buildTrackObjectsFromPlayers(); // ensure roster locked for race
       if (lobbySection) lobbySection.style.display = 'none';
       initDynamicBoost();
+      localPlayerFinished = false;
       break;
     case 'tick':
       if (MP.phase === 'countdown' && MP.countdownEndsAt) {
@@ -164,6 +211,8 @@ function handleMessage(msg) {
       break;
     case 'raceEnd':
       MP.phase = 'results'; raceOverlay.style.display = 'flex';
+      scheduleNextBoostKeyRotation(Number.POSITIVE_INFINITY);
+      countdownBoostPrimed = false;
       // Reset all players to unready on client side
       MP.players.forEach(p => { p.ready = false; });
       // Populate Final Leaderboard in sidebar
@@ -190,6 +239,17 @@ function handleMessage(msg) {
       // Update UI to reflect unready state
       renderPlayers();
       updateButtons();
+      // Refresh leaderboards immediately on race completion
+      if (typeof window.refreshLeaderboards === 'function') {
+        try {
+          window.refreshLeaderboards();
+          setTimeout(() => {
+            try { window.refreshLeaderboards(); } catch (err) { console.warn('refreshLeaderboards retry failed', err); }
+          }, 800);
+        } catch (err) {
+          console.warn('refreshLeaderboards failed', err);
+        }
+      }
       break;
     case 'boost':
       // show notification on boost press/release
@@ -207,6 +267,7 @@ function updateButtons() {
   const isHost = MP.clientId === MP.hostId;
   const me = MP.players.find(p => p.id === MP.clientId);
   const allReady = MP.players.every(p => p.ready);
+  const hostPlayer = MP.players.find(p => p.id === MP.hostId);
 
   // Show start button only in lobby phase, reset button only in results phase
   startBtn.style.display = isHost && MP.phase === 'lobby' ? 'block' : 'none';
@@ -226,6 +287,21 @@ function updateButtons() {
       renameBtn.disabled = me.ready;
     }
   }
+
+  if (MP.phase === 'race' && localPlayerFinished) {
+    readyBtn.disabled = true;
+    readyBtn.textContent = 'Finished';
+    if (renameBtn) renameBtn.disabled = true;
+    readyBtn.classList.remove('ready-active');
+    startBtn.classList.remove('start-active');
+    return;
+  }
+
+  const shouldGlowReady = MP.phase === 'lobby' && (!me || !me.ready) && !readyBtn.disabled;
+  readyBtn.classList.toggle('ready-active', shouldGlowReady);
+
+  const shouldGlowStart = MP.phase === 'lobby' && isHost && hostPlayer && hostPlayer.ready && !startBtn.disabled;
+  startBtn.classList.toggle('start-active', shouldGlowStart);
 }
 
 function renderPlayers() {
@@ -301,6 +377,9 @@ let lastBoostKey = null;
 let keyFlashUntil = 0; // highlight flash end timestamp
 let _boostDown = false; // moved earlier to allow rotation-induced release
 let _boostNotice = null; // { text, ts, durationMs }
+let boostKeyInitialized = false;
+let countdownBoostPrimed = false;
+let localPlayerFinished = false;
 
 function displayBoostKey(k) { return k === ' ' ? 'Space' : k; }
 
@@ -318,12 +397,21 @@ function playBoostKeyCue() {
   } catch {}
 }
 
+function scheduleNextBoostKeyRotation(delayMs = BOOST_KEY_INTERVAL_MS) {
+  if (!Number.isFinite(delayMs)) {
+    nextKeyChangeAt = Number.POSITIVE_INFINITY;
+  } else {
+    nextKeyChangeAt = performance.now() + delayMs;
+  }
+}
+
 function rotateBoostKey() {
   const candidates = BOOST_KEYS.filter(k => k !== currentBoostKey);
   const idx = Math.floor(Math.random() * candidates.length);
   lastBoostKey = currentBoostKey;
   currentBoostKey = candidates[idx] || currentBoostKey;
-  nextKeyChangeAt = performance.now() + BOOST_KEY_INTERVAL_MS;
+  boostKeyInitialized = true;
+  scheduleNextBoostKeyRotation();
   keyFlashUntil = performance.now() + 600; // flash ~600ms
   playBoostKeyCue();
   // Release boost if held when key changes to avoid stuck boost
@@ -334,7 +422,20 @@ function rotateBoostKey() {
   try { console.log('[DynamicBoost] New boost key:', displayBoostKey(currentBoostKey)); } catch {}
 }
 
-function initDynamicBoost() { rotateBoostKey(); }
+function primeBoostKeyForCountdown() {
+  rotateBoostKey();
+  scheduleNextBoostKeyRotation(Number.POSITIVE_INFINITY);
+  countdownBoostPrimed = true;
+}
+
+function initDynamicBoost() {
+  if (!boostKeyInitialized) {
+    rotateBoostKey();
+  } else {
+    scheduleNextBoostKeyRotation();
+  }
+  countdownBoostPrimed = false;
+}
 
 function setup() {
   const canvasContainer = document.getElementById('canvas-container');
@@ -403,21 +504,40 @@ function calculateTrackGeometry() {
 function drawTrack() {
   const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
   if (!arcRadius) return;
-  const evenLaneColor = color(210, 180, 140);
-  const oddLaneColor = color(200, 170, 130);
+
+  const outerRadius = arcRadius - laneWidth / 2;
+
+  push();
+  stroke(0, 242, 255, 28);
+  strokeWeight((laneWidth * numLanes) + 36);
   noFill();
+  arc(leftArcCenter.x, leftArcCenter.y, outerRadius * 2, outerRadius * 2, HALF_PI, PI + HALF_PI);
+  arc(rightArcCenter.x, rightArcCenter.y, outerRadius * 2, outerRadius * 2, PI + HALF_PI, HALF_PI);
+  line(leftArcCenter.x, leftArcCenter.y - outerRadius, rightArcCenter.x, rightArcCenter.y - outerRadius);
+  line(rightArcCenter.x, rightArcCenter.y + outerRadius, leftArcCenter.x, leftArcCenter.y + outerRadius);
+  pop();
+
+  push();
+  noFill();
+  strokeCap(SQUARE);
+  strokeJoin(ROUND);
   strokeWeight(laneWidth);
   for (let i = 0; i < numLanes; i++) {
     const laneRadius = arcRadius - (i * laneWidth) - (laneWidth / 2);
     if (laneRadius <= 0) continue;
-    stroke(i % 2 === 0 ? evenLaneColor : oddLaneColor);
+    const laneColor = i % 2 === 0 ? color(0, 242, 255, 160) : color(0, 140, 190, 160);
+    stroke(laneColor);
     arc(leftArcCenter.x, leftArcCenter.y, laneRadius * 2, laneRadius * 2, HALF_PI, PI + HALF_PI);
     arc(rightArcCenter.x, rightArcCenter.y, laneRadius * 2, laneRadius * 2, PI + HALF_PI, HALF_PI);
     line(leftArcCenter.x, leftArcCenter.y - laneRadius, rightArcCenter.x, rightArcCenter.y - laneRadius);
     line(rightArcCenter.x, rightArcCenter.y + laneRadius, leftArcCenter.x, leftArcCenter.y + laneRadius);
   }
-  // Divider lines
-  stroke(255, 150); strokeWeight(2); noFill();
+  pop();
+
+  push();
+  stroke(0, 220, 255, 180);
+  strokeWeight(2);
+  noFill();
   for (let i = 1; i < numLanes; i++) {
     const dividerRadius = arcRadius - i * laneWidth;
     if (dividerRadius <= 0) continue;
@@ -426,18 +546,24 @@ function drawTrack() {
     line(leftArcCenter.x, leftArcCenter.y - dividerRadius, rightArcCenter.x, rightArcCenter.y - dividerRadius);
     line(rightArcCenter.x, rightArcCenter.y + dividerRadius, leftArcCenter.x, leftArcCenter.y + dividerRadius);
   }
-  // Finish line chessboard
+  pop();
+
   const finishLineX = leftArcCenter.x;
   const finishLineYStart = leftArcCenter.y - arcRadius;
   const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
   const rectW = FINISH_LINE_WIDTH;
   const rectH = finishLineYEnd - finishLineYStart;
-  noStroke(); rectMode(CORNERS);
-  const tiles = 8; const tileW = rectW / tiles; const tileH = rectH / tiles;
+
+  push();
+  noStroke();
+  rectMode(CORNERS);
+  const tiles = 8;
+  const tileW = rectW / tiles;
+  const tileH = rectH / tiles;
   for (let row = 0; row < tiles; row++) {
     for (let col = 0; col < tiles; col++) {
-      let isDark = (row + col) % 2 === 1;
-      fill(isDark ? color(181, 136, 99) : color(240, 217, 181));
+      const isDark = (row + col) % 2 === 1;
+      fill(isDark ? color(197, 0, 60, 220) : color(136, 4, 37, 220));
       rect(
         finishLineX + col * tileW,
         finishLineYStart + row * tileH,
@@ -446,6 +572,7 @@ function drawTrack() {
       );
     }
   }
+  pop();
 }
 
 function getTrackPosition(obj) {
@@ -485,15 +612,15 @@ function drawTrackObjects() {
     image(obj.img, pos.x, pos.y, avatarSize, avatarSize);
     const tx = pos.x + avatarSize / 2 + 5;
     const ty = pos.y;
-    // Bold black fill
-    fill(0); noStroke(); textSize(16); textStyle(BOLD); textAlign(LEFT, CENTER);
-    // White outline using canvas strokeText for better readability
+    textSize(16); textStyle(BOLD); textAlign(LEFT, CENTER);
+    fill(226, 236, 255); noStroke();
+    // Dark outline for readability on neon lanes
     push();
     const ctx = drawingContext;
     ctx.save();
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(5, 10, 24, 0.85)';
     ctx.lineWidth = 3;
     // Use same font settings as p5
     // p5 sets its own font internally; strokeText will use current context font
@@ -542,6 +669,9 @@ function syncRaceProgress(playersProgress) {
     obj.currentSpeed = pp.currentSpeed || 0; // direct from server
     const dt = 1/60; // approximate server tick interval
     obj.currentAccel = (obj.currentSpeed - oldSpeed) / dt;
+    if (pp.id === MP.clientId && pp.finished) {
+      localPlayerFinished = true;
+    }
   });
 }
 
@@ -557,7 +687,7 @@ function syncBotProgress(botsProgress) {
 }
 
 function draw() {
-  background(0, 100, 0);
+  background(8, 12, 26);
   calculateTrackGeometry();
   drawTrack();
   // Draw avatars even in lobby so arrivals appear immediately
@@ -577,9 +707,9 @@ function draw() {
 
   // Draw player speed and acceleration during race
   if (MP.phase === 'race') {
-    if (performance.now() >= nextKeyChangeAt) rotateBoostKey();
+    if (!localPlayerFinished && performance.now() >= nextKeyChangeAt) rotateBoostKey();
     const me = trackObjects.find(o => o.id === MP.clientId);
-    if (me && typeof me.currentSpeed === 'number') {
+    if (!localPlayerFinished && me && typeof me.currentSpeed === 'number') {
       const speed = Math.round(me.currentSpeed * 1000);
       const accel = (me.currentAccel || 0) * 1000;
 
@@ -664,4 +794,426 @@ function showBoostNotice(text) {
     ? Math.min(Math.max(400, MP.constants.BOOST_COOLDOWN_MS), 2000)
     : defaultDur;
   _boostNotice = { text, ts: millis(), durationMs: tunedDur };
+}
+
+// --- Synthwave Soundtrack (mirrors single-player implementation) ---
+function toggleSynthwave() {
+  if (synthwave.isPlaying) {
+    stopSynthwave();
+  } else {
+    startSynthwave();
+  }
+}
+
+function startSynthwave() {
+  const ctx = initSynthwaveContext();
+  if (!ctx) {
+    alert('Your browser does not support Web Audio, so the synthwave track cannot play.');
+    return;
+  }
+
+  synthwave.isPlaying = true;
+  updateToggleMusicButton();
+  const resumePromise = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+  resumePromise.then(() => {
+    synthwave.tempo = 92 + Math.random() * 14;
+    synthwave.beatDuration = 60 / synthwave.tempo / 4;
+    synthwave.stepIndex = 0;
+    synthwave.nextNoteTime = ctx.currentTime + 0.12;
+    generateSynthwavePatterns();
+    ensurePadVoices(ctx);
+    updatePadChord(ctx.currentTime + 0.05);
+    applyMeasureDynamics(ctx.currentTime + 0.1);
+    synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    synthwave.masterGain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 1.0);
+    runSynthwaveScheduler();
+    updateToggleMusicButton();
+  }).catch((error) => {
+    console.warn('Unable to start synthwave audio:', error);
+    synthwave.isPlaying = false;
+    updateToggleMusicButton();
+  });
+}
+
+function stopSynthwave() {
+  if (!synthwave.context) {
+    updateToggleMusicButton();
+    return;
+  }
+  synthwave.isPlaying = false;
+  if (synthwave.schedulerId) {
+    cancelAnimationFrame(synthwave.schedulerId);
+    synthwave.schedulerId = null;
+  }
+  const ctx = synthwave.context;
+  if (synthwave.padGain) {
+    synthwave.padGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.padGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.3);
+  }
+  if (synthwave.kickGain) {
+    synthwave.kickGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.kickGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+  }
+  synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+  synthwave.masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+  synthwave.nextNoteTime = 0;
+  synthwave.stepIndex = 0;
+  updateToggleMusicButton();
+}
+
+function initSynthwaveContext() {
+  if (synthwave.context) {
+    return synthwave.context;
+  }
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    return null;
+  }
+  const ctx = new AudioCtx();
+  synthwave.context = ctx;
+  synthwave.masterGain = ctx.createGain();
+  synthwave.masterGain.gain.value = 0.0001;
+  synthwave.masterGain.connect(ctx.destination);
+
+  synthwave.kickGain = ctx.createGain();
+  synthwave.kickGain.gain.value = 0.6;
+  synthwave.kickGain.connect(synthwave.masterGain);
+
+  synthwave.bassGain = ctx.createGain();
+  synthwave.bassGain.gain.value = 0.75;
+  synthwave.bassGain.connect(synthwave.masterGain);
+
+  synthwave.leadGain = ctx.createGain();
+  synthwave.leadGain.gain.value = 0.38;
+  synthwave.leadGain.connect(synthwave.masterGain);
+
+  synthwave.drumGain = ctx.createGain();
+  synthwave.drumGain.gain.value = 0.65;
+  synthwave.drumGain.connect(synthwave.masterGain);
+
+  synthwave.padFilter = ctx.createBiquadFilter();
+  synthwave.padFilter.type = 'lowpass';
+  synthwave.padFilter.frequency.value = 400;
+  synthwave.padFilter.Q.value = 0.8;
+
+  synthwave.padGain = ctx.createGain();
+  synthwave.padGain.gain.value = 0.0001;
+  synthwave.padFilter.connect(synthwave.padGain);
+  synthwave.padGain.connect(synthwave.masterGain);
+  synthwave.padVoices = [];
+
+  synthwave.noiseBuffer = createNoiseBuffer(ctx);
+  return ctx;
+}
+
+function runSynthwaveScheduler() {
+  if (!synthwave.isPlaying || !synthwave.context) {
+    return;
+  }
+  const ctx = synthwave.context;
+  while (synthwave.nextNoteTime < ctx.currentTime + 0.2) {
+    scheduleSynthwaveStep(synthwave.stepIndex, synthwave.nextNoteTime);
+    synthwave.nextNoteTime += synthwave.beatDuration;
+    synthwave.stepIndex = (synthwave.stepIndex + 1) % 16;
+    if (synthwave.stepIndex === 0) {
+      if (Math.random() > 0.6) {
+        mutateSynthwavePatterns();
+      }
+      updatePadChord(synthwave.nextNoteTime);
+      applyMeasureDynamics(synthwave.nextNoteTime);
+    }
+  }
+  synthwave.schedulerId = requestAnimationFrame(runSynthwaveScheduler);
+}
+
+function scheduleSynthwaveStep(step, time) {
+  if (synthwave.kickPattern[step]) {
+    triggerKick(time);
+  }
+  const bassFreq = synthwave.bassPattern[step];
+  if (bassFreq) {
+    triggerBass(time, bassFreq);
+  }
+
+  const leadFreq = synthwave.leadPattern[step];
+  if (leadFreq) {
+    triggerLead(time, leadFreq);
+  }
+
+  if (synthwave.hatPattern[step]) {
+    triggerHat(time);
+  }
+
+  if (synthwave.snareSteps.includes(step)) {
+    triggerSnare(time + synthwave.beatDuration * 0.05);
+  }
+}
+
+function generateSynthwavePatterns() {
+  const rootChoices = [40, 42, 45, 47];
+  const root = rootChoices[Math.floor(Math.random() * rootChoices.length)];
+  const scaleOffsets = [0, 2, 5, 7, 9, 12];
+  const scale = scaleOffsets.map(offset => root + offset);
+  synthwave.scale = scale;
+
+  const bassPattern = new Array(16).fill(null);
+  for (let step = 0; step < 16; step++) {
+    if (step % 4 === 0 || Math.random() > 0.62) {
+      const octaveShift = Math.random() > 0.7 ? -12 : 0;
+      const noteIndex = (step / 4 + Math.floor(Math.random() * 2)) % scale.length;
+      bassPattern[step] = midiToFrequency(scale[noteIndex] + octaveShift);
+    }
+  }
+  if (!bassPattern[0]) {
+    bassPattern[0] = midiToFrequency(scale[0]);
+  }
+  synthwave.bassPattern = bassPattern;
+
+  const leadPattern = new Array(16).fill(null);
+  for (let step = 0; step < 16; step++) {
+    if (Math.random() > 0.7) {
+      const note = scale[Math.floor(Math.random() * scale.length)] + 12;
+      leadPattern[step] = midiToFrequency(note + (Math.random() > 0.6 ? 12 : 0));
+    }
+  }
+  synthwave.leadPattern = leadPattern;
+
+  synthwave.hatPattern = new Array(16).fill(true).map(() => Math.random() > 0.12);
+  synthwave.snareSteps = [4, 12];
+
+  const kickPattern = new Array(16).fill(false);
+  for (let step = 0; step < 16; step += 4) {
+    kickPattern[step] = true;
+    if (step + 2 < 16 && Math.random() > 0.65) {
+      kickPattern[step + 2] = true;
+    }
+  }
+  if (Math.random() > 0.7) {
+    const extra = Math.floor(Math.random() * 16);
+    kickPattern[extra] = true;
+  }
+  synthwave.kickPattern = kickPattern;
+}
+
+function mutateSynthwavePatterns() {
+  const scale = synthwave.scale;
+  if (!scale || scale.length === 0) {
+    return;
+  }
+  synthwave.kickPattern = synthwave.kickPattern.map((on, idx) => {
+    if (idx % 4 === 0) return true;
+    if (Math.random() > 0.92) return !on;
+    if (on && Math.random() > 0.96) return false;
+    return on;
+  });
+  if (Math.random() > 0.55) {
+    const accent = Math.floor(Math.random() * 16);
+    synthwave.kickPattern[accent] = true;
+  }
+  for (let i = 0; i < synthwave.leadPattern.length; i++) {
+    if (Math.random() > 0.94) {
+      synthwave.leadPattern[i] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)] + 12);
+    } else if (Math.random() > 0.97) {
+      synthwave.leadPattern[i] = null;
+    }
+  }
+  if (Math.random() > 0.7) {
+    const idx = Math.floor(Math.random() * synthwave.bassPattern.length);
+    synthwave.bassPattern[idx] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)]);
+  }
+  synthwave.hatPattern = synthwave.hatPattern.map(flag => (Math.random() > 0.97 ? !flag : flag));
+}
+
+function triggerBass(time, frequency) {
+  const ctx = synthwave.context;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(frequency, time);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.32, time + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 1.6);
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(1400, time);
+  filter.Q.value = 0.8;
+
+  osc.connect(filter).connect(gain).connect(synthwave.bassGain);
+  osc.start(time);
+  osc.stop(time + synthwave.beatDuration * 1.6);
+}
+
+function triggerLead(time, frequency) {
+  const ctx = synthwave.context;
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(frequency, time);
+  osc.frequency.linearRampToValueAtTime(frequency * 1.01, time + synthwave.beatDuration * 0.6);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.18, time + 0.04);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 2.2);
+
+  const delay = ctx.createDelay();
+  delay.delayTime.setValueAtTime(synthwave.beatDuration * 2, time);
+  const feedback = ctx.createGain();
+  feedback.gain.setValueAtTime(0.35, time);
+
+  delay.connect(feedback);
+  feedback.connect(delay);
+
+  osc.connect(gain);
+  gain.connect(synthwave.leadGain);
+  gain.connect(delay);
+  delay.connect(synthwave.leadGain);
+
+  osc.start(time);
+  osc.stop(time + synthwave.beatDuration * 2.4);
+}
+
+function triggerHat(time) {
+  if (!synthwave.noiseBuffer) return;
+  const ctx = synthwave.context;
+  const source = ctx.createBufferSource();
+  source.buffer = synthwave.noiseBuffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.setValueAtTime(8000, time);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.12, time);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+
+  source.connect(filter).connect(gain).connect(synthwave.drumGain);
+  source.start(time);
+  source.stop(time + 0.12);
+}
+
+function triggerSnare(time) {
+  if (!synthwave.noiseBuffer) return;
+  const ctx = synthwave.context;
+  const source = ctx.createBufferSource();
+  source.buffer = synthwave.noiseBuffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(1800, time);
+  filter.Q.value = 0.8;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.24, time + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+  source.connect(filter).connect(gain).connect(synthwave.drumGain);
+  source.start(time);
+  source.stop(time + 0.35);
+}
+
+function ensurePadVoices(ctx) {
+  if (!ctx || !synthwave.padFilter) return;
+  if (Array.isArray(synthwave.padVoices) && synthwave.padVoices.length) return;
+  synthwave.padVoices = [];
+  const chordOffsets = [0, 7, 12, 24];
+  chordOffsets.forEach((offset, idx) => {
+    const osc = ctx.createOscillator();
+    osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    osc.connect(gain).connect(synthwave.padFilter);
+    osc.start();
+    synthwave.padVoices.push({ osc, gain, offset });
+  });
+}
+
+function updatePadChord(time) {
+  const ctx = synthwave.context;
+  if (!ctx) return;
+  ensurePadVoices(ctx);
+  if (!Array.isArray(synthwave.padVoices) || synthwave.padVoices.length === 0) return;
+  const scale = (synthwave.scale && synthwave.scale.length) ? synthwave.scale : [40, 43, 47, 52, 55, 59];
+  synthwave.chordIndex = (synthwave.chordIndex + (Math.random() > 0.5 ? 2 : 1)) % scale.length;
+  const rootMidi = scale[synthwave.chordIndex];
+  const chordTemplate = [0, 4, 7];
+  synthwave.padVoices.forEach((voice, idx) => {
+    const note = rootMidi + chordTemplate[idx % chordTemplate.length] + voice.offset;
+    const freq = midiToFrequency(note);
+    voice.osc.frequency.cancelScheduledValues(time);
+    voice.osc.frequency.setValueAtTime(freq, time);
+    voice.osc.frequency.linearRampToValueAtTime(freq * 1.01, time + 0.8);
+    voice.gain.gain.cancelScheduledValues(time);
+    const level = 0.04 + 0.02 * (idx % chordTemplate.length);
+    voice.gain.gain.setTargetAtTime(level, time, 0.6);
+  });
+  if (synthwave.padFilter) {
+    const targetFreq = 360 + Math.random() * 900;
+    synthwave.padFilter.frequency.setTargetAtTime(targetFreq, time, 0.7);
+  }
+  if (synthwave.padGain) {
+    const padLevel = 0.16 + Math.random() * 0.05;
+    synthwave.padGain.gain.cancelScheduledValues(time);
+    synthwave.padGain.gain.setTargetAtTime(padLevel, time, 0.8);
+  }
+}
+
+function applyMeasureDynamics(time) {
+  if (!synthwave.masterGain) return;
+  const masterLevel = 0.18 + Math.random() * 0.08;
+  synthwave.masterGain.gain.cancelScheduledValues(time);
+  synthwave.masterGain.gain.setTargetAtTime(masterLevel, time, 0.85);
+  if (synthwave.leadGain) {
+    const leadLevel = 0.3 + Math.random() * 0.12;
+    synthwave.leadGain.gain.setTargetAtTime(leadLevel, time, 0.7);
+  }
+  if (synthwave.drumGain) {
+    const drumLevel = 0.55 + Math.random() * 0.18;
+    synthwave.drumGain.gain.setTargetAtTime(drumLevel, time, 0.5);
+  }
+  if (synthwave.bassGain) {
+    const bassLevel = 0.7 + Math.random() * 0.12;
+    synthwave.bassGain.gain.setTargetAtTime(bassLevel, time, 0.6);
+  }
+}
+
+function triggerKick(time) {
+  if (!synthwave.kickGain) return;
+  const ctx = synthwave.context;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(68, time);
+  osc.frequency.exponentialRampToValueAtTime(30, time + 0.2);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.9, time + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+  osc.connect(gain).connect(synthwave.kickGain);
+  osc.start(time);
+  osc.stop(time + 0.4);
+}
+
+function createNoiseBuffer(ctx) {
+  const duration = 0.5;
+  const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  return buffer;
+}
+
+function midiToFrequency(note) {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
+
+function updateToggleMusicButton() {
+  if (toggleMusicBtn) {
+    toggleMusicBtn.textContent = synthwave.isPlaying ? 'Stop Synthwave' : 'Play Synthwave';
+  }
 }

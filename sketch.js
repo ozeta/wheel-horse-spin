@@ -1,7 +1,7 @@
 let horses = [];
 let horseObjects = [];
 let horseImages = {}; // Cache for loaded avatar images
-let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn, pauseGameBtn;
+let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn, pauseGameBtn, toggleMusicBtn;
 let winner = null;
 // --- Timing ---
 let raceStartMillis = 0;
@@ -27,6 +27,33 @@ let multiplayer = {
     lastTickMs: null,
     username: null,
     roomId: null,
+};
+
+const synthwave = {
+    context: null,
+    masterGain: null,
+    bassGain: null,
+    leadGain: null,
+    drumGain: null,
+    noiseBuffer: null,
+    isPlaying: false,
+    tempo: 0,
+    beatDuration: 0,
+    nextNoteTime: 0,
+    stepIndex: 0,
+    schedulerId: null,
+    bassPattern: [],
+    leadPattern: [],
+    hatPattern: [],
+    snareSteps: [],
+    scale: [],
+    kickGain: null,
+    kickPattern: [],
+    padGain: null,
+    padFilter: null,
+    padVoices: [],
+    chordIndex: 0,
+    lastMeasureTarget: 0,
 };
 
 // --- Chessboard SVG ---
@@ -86,6 +113,7 @@ function setup() {
     resetGameBtn = document.getElementById('reset-game');
     shareUrlBtn = document.getElementById('share-url');
     pauseGameBtn = document.getElementById('pause-game');
+    toggleMusicBtn = document.getElementById('toggle-music');
     // Multiplayer DOM elements
     multiplayer.serverInput = document.getElementById('mp-server');
     multiplayer.roomInput = document.getElementById('mp-room');
@@ -104,10 +132,26 @@ function setup() {
     resetGameBtn.addEventListener('click', resetGame);
     shareUrlBtn.addEventListener('click', copyShareableURL);
     pauseGameBtn.addEventListener('click', togglePause);
+    if (toggleMusicBtn) {
+        toggleMusicBtn.addEventListener('click', toggleSynthwave);
+        updateToggleMusicButton();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            stopSynthwave();
+        }
+    });
     // Multiplayer events
-    multiplayer.connectBtn.addEventListener('click', mpConnect);
-    multiplayer.readyBtn.addEventListener('click', mpToggleReady);
-    multiplayer.startBtn.addEventListener('click', mpStartGame);
+    if (multiplayer.connectBtn) {
+        multiplayer.connectBtn.addEventListener('click', mpConnect);
+    }
+    if (multiplayer.readyBtn) {
+        multiplayer.readyBtn.addEventListener('click', mpToggleReady);
+    }
+    if (multiplayer.startBtn) {
+        multiplayer.startBtn.addEventListener('click', mpStartGame);
+    }
 
     // --- Initial Load ---
     currentStyle = avatarStyles[Math.floor(Math.random() * avatarStyles.length)];
@@ -115,7 +159,7 @@ function setup() {
 }
 
 function draw() {
-    background(0, 100, 0); // Dark green for infield and outer area
+    drawCyberpunkBackground();
     calculateTrackGeometry();
     drawTrack();
     if (!isMultiplayerActive()) {
@@ -148,30 +192,41 @@ function isMultiplayerActive() {
 
 function mpConnect() {
     if (multiplayer.connected) return;
+    if (!multiplayer.serverInput || !multiplayer.roomInput || !multiplayer.usernameInput) return;
     const url = (multiplayer.serverInput.value || 'ws://localhost:8080').trim();
     const roomId = (multiplayer.roomInput.value || 'default').trim();
     const username = (multiplayer.usernameInput.value || 'Browser').trim();
     multiplayer.ws = new WebSocket(url);
-    multiplayer.statusDiv.textContent = 'Connecting...';
+    if (multiplayer.statusDiv) {
+        multiplayer.statusDiv.textContent = 'Connecting...';
+    }
     multiplayer.ws.onopen = () => {
         multiplayer.ws.send(JSON.stringify({ type: 'hello', roomId, username, version: 1 }));
         multiplayer.connected = true;
         multiplayer.username = username;
         multiplayer.roomId = roomId;
-        multiplayer.statusDiv.textContent = 'Connected. Waiting for welcome...';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Connected. Waiting for welcome...';
+        }
     };
     multiplayer.ws.onmessage = (ev) => {
         let msg; try { msg = JSON.parse(ev.data); } catch { return; }
         handleMultiplayerMessage(msg);
     };
     multiplayer.ws.onclose = () => {
-        multiplayer.statusDiv.textContent = 'Disconnected.';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Disconnected.';
+        }
         multiplayer.connected = false;
         multiplayer.roomPhase = 'none';
-        multiplayer.startBtn.style.display = 'none';
+        if (multiplayer.startBtn) {
+            multiplayer.startBtn.style.display = 'none';
+        }
     };
     multiplayer.ws.onerror = () => {
-        multiplayer.statusDiv.textContent = 'Connection error.';
+        if (multiplayer.statusDiv) {
+            multiplayer.statusDiv.textContent = 'Connection error.';
+        }
     };
 }
 
@@ -193,8 +248,12 @@ function handleMultiplayerMessage(msg) {
         case 'welcome': {
             multiplayer.clientId = msg.clientId;
             multiplayer.hostId = msg.hostId;
-            multiplayer.statusDiv.textContent = `Joined room ${msg.roomId} (clientId=${msg.clientId})`;
-            multiplayer.readyBtn.disabled = false;
+            if (multiplayer.statusDiv) {
+                multiplayer.statusDiv.textContent = `Joined room ${msg.roomId} (clientId=${msg.clientId})`;
+            }
+            if (multiplayer.readyBtn) {
+                multiplayer.readyBtn.disabled = false;
+            }
             break;
         }
         case 'roomState': {
@@ -213,13 +272,17 @@ function handleMultiplayerMessage(msg) {
         case 'countdown': {
             multiplayer.roomPhase = 'countdown';
             multiplayer.countdownEndsAt = msg.countdownEndsAt;
-            multiplayer.countdownDiv.style.display = 'block';
+            if (multiplayer.countdownDiv) {
+                multiplayer.countdownDiv.style.display = 'block';
+            }
             break;
         }
         case 'raceStart': {
             multiplayer.roomPhase = 'race';
             multiplayer.raceId = msg.raceId;
-            multiplayer.countdownDiv.style.display = 'none';
+            if (multiplayer.countdownDiv) {
+                multiplayer.countdownDiv.style.display = 'none';
+            }
             gameState = 'racing';
             // Build horseObjects from players + bots
             buildHorseObjectsFromMultiplayer(msg.players, msg.bots);
@@ -246,7 +309,7 @@ function handleMultiplayerMessage(msg) {
                 });
             }
             // Countdown overlay update
-            if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt) {
+            if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt && multiplayer.countdownDiv) {
                 const remaining = Math.max(0, Math.round((multiplayer.countdownEndsAt - Date.now()) / 1000));
                 multiplayer.countdownDiv.textContent = `Countdown: ${remaining}s`;
             }
@@ -361,9 +424,9 @@ function drawMultiplayerOverlay() {
     // Countdown overlay
     if (multiplayer.roomPhase === 'countdown' && multiplayer.countdownEndsAt) {
         const remaining = Math.max(0, Math.round((multiplayer.countdownEndsAt - Date.now()) / 1000));
-        fill(0,0,0,120);
+        fill(5, 8, 18, 200);
         rect(0,0,width,height);
-        fill(255);
+        fill(0, 242, 255);
         textAlign(CENTER,CENTER);
         textSize(48);
         text(`Race starts in ${remaining}s`, width/2, height/2);
@@ -525,6 +588,28 @@ function resetGame() {
 
 // --- Drawing Functions ---
 
+function drawCyberpunkBackground() {
+    push();
+    const ctx = drawingContext;
+    ctx.save();
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, 'rgba(0, 114, 140, 0.95)');
+    gradient.addColorStop(0.5, 'rgba(36, 19, 95, 0.92)');
+    gradient.addColorStop(1, 'rgba(120, 10, 130, 0.95)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+    pop();
+
+    push();
+    rectMode(CORNER);
+    noFill();
+    stroke(0, 242, 255, 35);
+    strokeWeight(2);
+    rect(12, 12, width - 24, height - 24, 20);
+    pop();
+}
+
 function calculateTrackGeometry() {
     const numLanes = horses.length > 0 ? horses.length : 1;
     const margin = 40;
@@ -550,31 +635,42 @@ function calculateTrackGeometry() {
 function drawTrack() {
     const { numLanes, laneWidth, arcRadius, straightLength, leftArcCenter, rightArcCenter } = trackGeometry;
 
-    const evenLaneColor = color(210, 180, 140); // Lighter brown
-    const oddLaneColor = color(200, 170, 130);  // Slightly darker brown
+    const outerRadius = arcRadius - laneWidth / 2;
 
-    // Draw each lane individually with its correct color
+    push();
+    stroke(0, 242, 255, 28);
+    strokeWeight((laneWidth * numLanes) + 36);
     noFill();
+    arc(leftArcCenter.x, leftArcCenter.y, outerRadius * 2, outerRadius * 2, HALF_PI, PI + HALF_PI);
+    arc(rightArcCenter.x, rightArcCenter.y, outerRadius * 2, outerRadius * 2, PI + HALF_PI, HALF_PI);
+    line(leftArcCenter.x, leftArcCenter.y - outerRadius, rightArcCenter.x, rightArcCenter.y - outerRadius);
+    line(rightArcCenter.x, rightArcCenter.y + outerRadius, leftArcCenter.x, leftArcCenter.y + outerRadius);
+    pop();
+
+    push();
+    noFill();
+    strokeCap(SQUARE);
+    strokeJoin(ROUND);
     strokeWeight(laneWidth);
     for (let i = 0; i < numLanes; i++) {
         const laneRadius = arcRadius - (i * laneWidth) - (laneWidth / 2);
-        const laneColor = i % 2 === 0 ? evenLaneColor : oddLaneColor;
+        const laneColor = i % 2 === 0 ? color(0, 242, 255, 160) : color(0, 140, 190, 160);
 
         if (laneRadius > 0) {
             stroke(laneColor);
-            // Draw the path for the current lane
             arc(leftArcCenter.x, leftArcCenter.y, laneRadius * 2, laneRadius * 2, HALF_PI, PI + HALF_PI);
             arc(rightArcCenter.x, rightArcCenter.y, laneRadius * 2, laneRadius * 2, PI + HALF_PI, HALF_PI);
             line(leftArcCenter.x, leftArcCenter.y - laneRadius, rightArcCenter.x, rightArcCenter.y - laneRadius);
             line(rightArcCenter.x, rightArcCenter.y + laneRadius, leftArcCenter.x, leftArcCenter.y + laneRadius);
         }
     }
+    pop();
 
-    // Draw thin white divider lines on top of the lanes
-    stroke(255, 150); // White, semi-transparent lines
+    push();
+    stroke(0, 220, 255, 180);
     strokeWeight(2);
     noFill();
-     for (let i = 1; i < numLanes; i++) {
+    for (let i = 1; i < numLanes; i++) {
         const dividerRadius = arcRadius - i * laneWidth;
         if (dividerRadius > 0) {
             arc(leftArcCenter.x, leftArcCenter.y, dividerRadius * 2, dividerRadius * 2, HALF_PI, PI + HALF_PI);
@@ -583,24 +679,24 @@ function drawTrack() {
             line(rightArcCenter.x, rightArcCenter.y + dividerRadius, leftArcCenter.x, leftArcCenter.y + dividerRadius);
         }
     }
+    pop();
 
-    // --- Draw Finish Line as a rectangle with chessboard pattern ---
     const finishLineX = leftArcCenter.x;
     const finishLineYStart = leftArcCenter.y - arcRadius;
     const finishLineYEnd = leftArcCenter.y - (arcRadius - (numLanes * laneWidth));
     const rectW = FINISH_LINE_WIDTH;
     const rectH = finishLineYEnd - finishLineYStart;
+
+    push();
     noStroke();
     rectMode(CORNERS);
-
-    // Draw chessboard pattern (8x8)
     const tiles = 8;
     const tileW = rectW / tiles;
     const tileH = rectH / tiles;
     for (let row = 0; row < tiles; row++) {
         for (let col = 0; col < tiles; col++) {
-            let isDark = (row + col) % 2 === 1;
-            fill(isDark ? color(181, 136, 99) : color(240, 217, 181));
+            const isDark = (row + col) % 2 === 1;
+            fill(isDark ? color(197, 0, 60, 220) : color(136, 4, 37, 220));
             rect(
                 finishLineX + col * tileW,
                 finishLineYStart + row * tileH,
@@ -609,6 +705,7 @@ function drawTrack() {
             );
         }
     }
+    pop();
 }
 
 function getHorsePosition(horse) {
@@ -656,30 +753,35 @@ function drawHorses() {
         image(horse.img, pos.x, pos.y, avatarSize, avatarSize);
 
         // Draw the horse's name to the right of the avatar
-        fill(0); // Black text
-        noStroke();
+        stroke(5, 8, 18, 180);
+        strokeWeight(3);
+        fill(226, 236, 255);
         textSize(16);
         textAlign(LEFT, CENTER);
         text(horse.name, pos.x + avatarSize / 2 + 5, pos.y);
+        noStroke();
     });
 }
 
 function drawWinnerMessage() {
-    fill(0, 0, 0, 150); // Semi-transparent backdrop
+    push();
     rectMode(CORNER);
+    noStroke();
+    fill(5, 8, 18, 200);
     rect(0, 0, width, height);
 
-    fill(255);
+    fill(0, 242, 255);
     textAlign(CENTER, CENTER);
     const winnerTimeStr = raceElapsedSeconds.toFixed(2);
     const totalTimeStr = overallRaceDurationSeconds.toFixed(2);
     const tieLabel = winner && winner._tie ? ' (tie)' : '';
     textSize(50);
-    // Trophy cup emoji near winner name
     text(`🏆 Winner${tieLabel}: ${winner.name}`, width / 2, height / 2 - 50);
+    fill(226, 236, 255);
     textSize(24);
     text(`Winner Time: ${winnerTimeStr}s`, width / 2, height / 2);
     text(`Total Duration: ${totalTimeStr}s`, width / 2, height / 2 + 40);
+    pop();
 }
 
 // --- Leaderboard ---
@@ -702,12 +804,15 @@ function drawLeaderboard() {
     const x = (width - boxWidth) / 2;
     const y = (height - boxHeight) / 2;
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 210);
-    rect(x, y, boxWidth, boxHeight, 12);
+    stroke(0, 242, 255, 120);
+    strokeWeight(2);
+    fill(10, 16, 38, 230);
+    rect(x, y, boxWidth, boxHeight, 16);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, CENTER);
     textSize(18);
     textStyle(BOLD);
@@ -716,34 +821,28 @@ function drawLeaderboard() {
     ranked.forEach((h, i) => {
         const yTop = y + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
+        const rankStr = (i + 1).toString().padStart(2, '0');
+        const rightInfo = h.finished ? `${h.finishSeconds.toFixed(2)}s` : '...';
 
-        // Color logic top 3 of current ranking
-        let rowColor;
-        if (i === 0) rowColor = color(255, 215, 0); // Gold
-        else if (i === 1) rowColor = color(192); // Silver
-        else if (i === 2) rowColor = color(184, 115, 51); // Copper
-        else rowColor = color(255); // White
+        fill(18, 26, 56, 180);
+        rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
 
-        // Text
+        fill(225, 235, 255);
         textAlign(LEFT, CENTER);
         textSize(16);
         textStyle(NORMAL);
-        fill(30);
-        const rankStr = (i + 1).toString().padStart(2, '0');
-        let rightInfo = h.finished ? `${h.finishSeconds.toFixed(2)}s` : '...';
-        // Background row accent (optional subtle)
-        fill(230);
-        rect(x + padding, centerY - 12, boxWidth - padding * 2, 24, 6);
-        fill(30);
-        text(`${rankStr}. ${h.name}`, x + padding + 8, centerY - 2);
+        text(`${rankStr}. ${h.name}`, x + padding + 12, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(rightInfo, x + boxWidth - padding - 8, centerY - 2);
-        // Draw a small colored bullet for top3
+        text(rightInfo, x + boxWidth - padding - 12, centerY - 2);
+
         if (i < 3) {
-            fill(rowColor);
-            ellipse(x + padding + 4, centerY - 2, 10, 10);
+            const bulletColors = [color(0, 242, 255), color(173, 209, 255), color(255, 0, 212)];
+            fill(bulletColors[i]);
+            ellipse(x + padding + 6, centerY - 2, 10, 10);
         }
     });
+
+    pop();
 }
 
 // --- Final Leaderboard (Post-Race) ---
@@ -759,12 +858,15 @@ function drawFinalLeaderboard() {
     const boxX = (width - boxWidth) / 2;
     const boxY = (height / 2) + 90; // below overlay winner text
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 215);
-    rect(boxX, boxY, boxWidth, boxHeight, 14);
+    stroke(255, 0, 212, 120);
+    strokeWeight(2);
+    fill(12, 18, 48, 230);
+    rect(boxX, boxY, boxWidth, boxHeight, 18);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, CENTER);
     textSize(20);
     textStyle(BOLD);
@@ -773,34 +875,31 @@ function drawFinalLeaderboard() {
     ranked.forEach((h, i) => {
         const yTop = boxY + padding + headerHeight + i * rowHeight;
         const centerY = yTop + rowHeight / 2;
-        let colorFill;
-        if (i === 0) colorFill = color(255, 215, 0); // Gold
-        else if (i === 1) colorFill = color(192); // Silver
-        else if (i === 2) colorFill = color(184, 115, 51); // Copper
-        else colorFill = color(255);
-
         const rankStr = (i + 1).toString().padStart(2, '0');
         const timeStr = h.finishSeconds.toFixed(2) + 's' + (winner._tie && h.finishSeconds === winnerTime ? ' (tie)' : '');
         const delta = h.finishSeconds - winnerTime;
         const deltaStr = (delta === 0 ? '+0.00s' : `+${delta.toFixed(2)}s`);
 
-        // Row background
-        fill(230);
+        fill(18, 28, 60, 190);
         rect(boxX + padding, centerY - 14, boxWidth - padding * 2, 28, 8);
-        // Colored bullet for top3
+
         if (i < 3) {
-            fill(colorFill);
-            ellipse(boxX + padding + 12, centerY - 0, 14, 14);
+            const badgeColors = [color(0, 242, 255), color(173, 209, 255), color(255, 0, 212)];
+            fill(badgeColors[i]);
+            ellipse(boxX + padding + 14, centerY, 14, 14);
         }
-        fill(30);
+
+        fill(226, 236, 255);
         textAlign(LEFT, CENTER);
         textSize(16);
-        text(`${rankStr}. ${h.name}`, boxX + padding + 30, centerY - 2);
+        text(`${rankStr}. ${h.name}`, boxX + padding + 36, centerY - 2);
         textAlign(CENTER, CENTER);
         text(timeStr, boxX + boxWidth / 2, centerY - 2);
         textAlign(RIGHT, CENTER);
-        text(deltaStr, boxX + boxWidth - padding - 12, centerY - 2);
+        text(deltaStr, boxX + boxWidth - padding - 16, centerY - 2);
     });
+
+    pop();
 }
 
 // --- Data Persistence & Horse Management ---
@@ -916,12 +1015,15 @@ function drawResultsYamlPanel() {
         justCopied: prevMeta.justCopied || null
     };
 
+    push();
     rectMode(CORNER);
-    noStroke();
-    fill(255, 255, 255, 220);
-    rect(boxX, boxY, boxWidth, boxHeight, 10);
+    stroke(0, 242, 255, 120);
+    strokeWeight(2);
+    fill(10, 16, 38, 230);
+    rect(boxX, boxY, boxWidth, boxHeight, 14);
 
-    fill(30);
+    noStroke();
+    fill(0, 242, 255);
     textAlign(LEFT, TOP);
     textSize(16);
     textStyle(BOLD);
@@ -929,6 +1031,7 @@ function drawResultsYamlPanel() {
     textStyle(NORMAL);
     textSize(14);
     textFont('monospace');
+    fill(226, 236, 255);
     lines.forEach((ln, i) => {
         text(ln, boxX + padding, boxY + padding + lineHeight * (i + 1));
     });
@@ -938,21 +1041,19 @@ function drawResultsYamlPanel() {
     const clickedRecently = window._yamlPanelMeta.justCopied && (millis() - window._yamlPanelMeta.justCopied < 900);
     let btnColor;
     if (clickedRecently) {
-        // Confirmation color (greenish)
-        btnColor = color(40, 160, 70);
+        btnColor = color(0, 214, 170);
     } else if (isHover) {
-        // Hover color (brighter blue)
-        btnColor = color(55, 145, 230);
+        btnColor = color(255, 0, 212);
     } else {
-        // Normal color
-        btnColor = color(40, 120, 200);
+        btnColor = color(0, 242, 255);
     }
     fill(btnColor);
     rect(copyBtnX, copyBtnY, copyBtnWidth, copyBtnHeight, 6);
-    fill(255);
+    fill(12, 18, 40);
     textAlign(CENTER, CENTER);
     textSize(14);
     text(clickedRecently ? 'Copied' : 'Copy', copyBtnX + copyBtnWidth / 2, copyBtnY + copyBtnHeight / 2);
+    pop();
 }
 
 // Handle copy button click
@@ -1107,6 +1208,428 @@ function copyShareableURL() {
     }).catch(() => {
         alert('Failed to copy URL.');
     });
+}
+
+// --- Synthwave Soundtrack ---
+function toggleSynthwave() {
+    if (synthwave.isPlaying) {
+        stopSynthwave();
+    } else {
+        startSynthwave();
+    }
+}
+
+function startSynthwave() {
+    const ctx = initSynthwaveContext();
+    if (!ctx) {
+        alert('Your browser does not support Web Audio, so the synthwave track cannot play.');
+        return;
+    }
+
+    synthwave.isPlaying = true;
+    updateToggleMusicButton();
+    const resumePromise = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+    resumePromise.then(() => {
+        synthwave.tempo = 92 + Math.random() * 14; // 92-106 BPM
+        synthwave.beatDuration = 60 / synthwave.tempo / 4; // 16th notes
+        synthwave.stepIndex = 0;
+        synthwave.nextNoteTime = ctx.currentTime + 0.12;
+        generateSynthwavePatterns();
+        ensurePadVoices(ctx);
+        updatePadChord(ctx.currentTime + 0.05);
+        applyMeasureDynamics(ctx.currentTime + 0.1);
+        synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+        synthwave.masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        synthwave.masterGain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 1.0);
+        runSynthwaveScheduler();
+        updateToggleMusicButton();
+    }).catch((error) => {
+        console.warn('Unable to start synthwave audio:', error);
+        synthwave.isPlaying = false;
+        updateToggleMusicButton();
+    });
+}
+
+function stopSynthwave() {
+    if (!synthwave.context) {
+        updateToggleMusicButton();
+        return;
+    }
+    synthwave.isPlaying = false;
+    if (synthwave.schedulerId) {
+        cancelAnimationFrame(synthwave.schedulerId);
+        synthwave.schedulerId = null;
+    }
+    const ctx = synthwave.context;
+    if (synthwave.padGain) {
+        synthwave.padGain.gain.cancelScheduledValues(ctx.currentTime);
+        synthwave.padGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.3);
+    }
+    if (synthwave.kickGain) {
+        synthwave.kickGain.gain.cancelScheduledValues(ctx.currentTime);
+        synthwave.kickGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+    }
+    synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+    synthwave.nextNoteTime = 0;
+    synthwave.stepIndex = 0;
+    updateToggleMusicButton();
+}
+
+function initSynthwaveContext() {
+    if (synthwave.context) {
+        return synthwave.context;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+        return null;
+    }
+    const ctx = new AudioCtx();
+    synthwave.context = ctx;
+    synthwave.masterGain = ctx.createGain();
+    synthwave.masterGain.gain.value = 0.0001;
+    synthwave.masterGain.connect(ctx.destination);
+
+    synthwave.kickGain = ctx.createGain();
+    synthwave.kickGain.gain.value = 0.6;
+    synthwave.kickGain.connect(synthwave.masterGain);
+
+    synthwave.bassGain = ctx.createGain();
+    synthwave.bassGain.gain.value = 0.75;
+    synthwave.bassGain.connect(synthwave.masterGain);
+
+    synthwave.leadGain = ctx.createGain();
+    synthwave.leadGain.gain.value = 0.38;
+    synthwave.leadGain.connect(synthwave.masterGain);
+
+    synthwave.drumGain = ctx.createGain();
+    synthwave.drumGain.gain.value = 0.65;
+    synthwave.drumGain.connect(synthwave.masterGain);
+
+    synthwave.padFilter = ctx.createBiquadFilter();
+    synthwave.padFilter.type = 'lowpass';
+    synthwave.padFilter.frequency.value = 400;
+    synthwave.padFilter.Q.value = 0.8;
+
+    synthwave.padGain = ctx.createGain();
+    synthwave.padGain.gain.value = 0.0001;
+    synthwave.padFilter.connect(synthwave.padGain);
+    synthwave.padGain.connect(synthwave.masterGain);
+    synthwave.padVoices = [];
+
+    synthwave.noiseBuffer = createNoiseBuffer(ctx);
+    return ctx;
+}
+
+function runSynthwaveScheduler() {
+    if (!synthwave.isPlaying || !synthwave.context) {
+        return;
+    }
+    const ctx = synthwave.context;
+    while (synthwave.nextNoteTime < ctx.currentTime + 0.2) {
+        scheduleSynthwaveStep(synthwave.stepIndex, synthwave.nextNoteTime);
+        synthwave.nextNoteTime += synthwave.beatDuration;
+        synthwave.stepIndex = (synthwave.stepIndex + 1) % 16;
+        if (synthwave.stepIndex === 0) {
+            if (Math.random() > 0.6) {
+                mutateSynthwavePatterns();
+            }
+            updatePadChord(synthwave.nextNoteTime);
+            applyMeasureDynamics(synthwave.nextNoteTime);
+        }
+    }
+    synthwave.schedulerId = requestAnimationFrame(runSynthwaveScheduler);
+}
+
+function scheduleSynthwaveStep(step, time) {
+    if (synthwave.kickPattern[step]) {
+        triggerKick(time);
+    }
+    const bassFreq = synthwave.bassPattern[step];
+    if (bassFreq) {
+        triggerBass(time, bassFreq);
+    }
+
+    const leadFreq = synthwave.leadPattern[step];
+    if (leadFreq) {
+        triggerLead(time, leadFreq);
+    }
+
+    if (synthwave.hatPattern[step]) {
+        triggerHat(time);
+    }
+
+    if (synthwave.snareSteps.includes(step)) {
+        triggerSnare(time + synthwave.beatDuration * 0.05);
+    }
+}
+
+function generateSynthwavePatterns() {
+    const rootChoices = [40, 42, 45, 47];
+    const root = rootChoices[Math.floor(Math.random() * rootChoices.length)];
+    const scaleOffsets = [0, 2, 5, 7, 9, 12];
+    const scale = scaleOffsets.map(offset => root + offset);
+    synthwave.scale = scale;
+
+    const bassPattern = new Array(16).fill(null);
+    for (let step = 0; step < 16; step++) {
+        if (step % 4 === 0 || Math.random() > 0.62) {
+            const octaveShift = Math.random() > 0.7 ? -12 : 0;
+            const noteIndex = (step / 4 + Math.floor(Math.random() * 2)) % scale.length;
+            bassPattern[step] = midiToFrequency(scale[noteIndex] + octaveShift);
+        }
+    }
+    if (!bassPattern[0]) {
+        bassPattern[0] = midiToFrequency(scale[0]);
+    }
+    synthwave.bassPattern = bassPattern;
+
+    const leadPattern = new Array(16).fill(null);
+    for (let step = 0; step < 16; step++) {
+        if (Math.random() > 0.7) {
+            const note = scale[Math.floor(Math.random() * scale.length)] + 12;
+            leadPattern[step] = midiToFrequency(note + (Math.random() > 0.6 ? 12 : 0));
+        }
+    }
+    synthwave.leadPattern = leadPattern;
+
+    synthwave.hatPattern = new Array(16).fill(true).map(() => Math.random() > 0.12);
+    synthwave.snareSteps = [4, 12];
+
+    const kickPattern = new Array(16).fill(false);
+    for (let step = 0; step < 16; step += 4) {
+        kickPattern[step] = true;
+        if (step + 2 < 16 && Math.random() > 0.65) {
+            kickPattern[step + 2] = true;
+        }
+    }
+    if (Math.random() > 0.7) {
+        const extra = Math.floor(Math.random() * 16);
+        kickPattern[extra] = true;
+    }
+    synthwave.kickPattern = kickPattern;
+}
+
+function mutateSynthwavePatterns() {
+    const scale = synthwave.scale;
+    if (!scale || scale.length === 0) {
+        return;
+    }
+    synthwave.kickPattern = synthwave.kickPattern.map((on, idx) => {
+        if (idx % 4 === 0) return true;
+        if (Math.random() > 0.92) return !on;
+        if (on && Math.random() > 0.96) return false;
+        return on;
+    });
+    if (Math.random() > 0.55) {
+        const accent = Math.floor(Math.random() * 16);
+        synthwave.kickPattern[accent] = true;
+    }
+    for (let i = 0; i < synthwave.leadPattern.length; i++) {
+        if (Math.random() > 0.94) {
+            synthwave.leadPattern[i] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)] + 12);
+        } else if (Math.random() > 0.97) {
+            synthwave.leadPattern[i] = null;
+        }
+    }
+    if (Math.random() > 0.7) {
+        const idx = Math.floor(Math.random() * synthwave.bassPattern.length);
+        synthwave.bassPattern[idx] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)]);
+    }
+    synthwave.hatPattern = synthwave.hatPattern.map(flag => (Math.random() > 0.97 ? !flag : flag));
+}
+
+function triggerBass(time, frequency) {
+    const ctx = synthwave.context;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(frequency, time);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.32, time + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 1.6);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, time);
+    filter.Q.value = 0.8;
+
+    osc.connect(filter).connect(gain).connect(synthwave.bassGain);
+    osc.start(time);
+    osc.stop(time + synthwave.beatDuration * 1.6);
+}
+
+function triggerLead(time, frequency) {
+    const ctx = synthwave.context;
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(frequency, time);
+    osc.frequency.linearRampToValueAtTime(frequency * 1.01, time + synthwave.beatDuration * 0.6);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.18, time + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 2.2);
+
+    const delay = ctx.createDelay();
+    delay.delayTime.setValueAtTime(synthwave.beatDuration * 2, time);
+    const feedback = ctx.createGain();
+    feedback.gain.setValueAtTime(0.35, time);
+
+    delay.connect(feedback);
+    feedback.connect(delay);
+
+    osc.connect(gain);
+    gain.connect(synthwave.leadGain);
+    gain.connect(delay);
+    delay.connect(synthwave.leadGain);
+
+    osc.start(time);
+    osc.stop(time + synthwave.beatDuration * 2.4);
+}
+
+function triggerHat(time) {
+    if (!synthwave.noiseBuffer) return;
+    const ctx = synthwave.context;
+    const source = ctx.createBufferSource();
+    source.buffer = synthwave.noiseBuffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(8000, time);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, time);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+
+    source.connect(filter).connect(gain).connect(synthwave.drumGain);
+    source.start(time);
+    source.stop(time + 0.12);
+}
+
+function triggerSnare(time) {
+    if (!synthwave.noiseBuffer) return;
+    const ctx = synthwave.context;
+    const source = ctx.createBufferSource();
+    source.buffer = synthwave.noiseBuffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, time);
+    filter.Q.value = 0.8;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.24, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+    source.connect(filter).connect(gain).connect(synthwave.drumGain);
+    source.start(time);
+    source.stop(time + 0.35);
+}
+
+function ensurePadVoices(ctx) {
+    if (!ctx || !synthwave.padFilter) return;
+    if (Array.isArray(synthwave.padVoices) && synthwave.padVoices.length) return;
+    synthwave.padVoices = [];
+    const chordOffsets = [0, 7, 12, 24];
+    chordOffsets.forEach((offset, idx) => {
+        const osc = ctx.createOscillator();
+        osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
+        const gain = ctx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain).connect(synthwave.padFilter);
+        osc.start();
+        synthwave.padVoices.push({ osc, gain, offset });
+    });
+}
+
+function updatePadChord(time) {
+    const ctx = synthwave.context;
+    if (!ctx) return;
+    ensurePadVoices(ctx);
+    if (!Array.isArray(synthwave.padVoices) || synthwave.padVoices.length === 0) return;
+    const scale = (synthwave.scale && synthwave.scale.length) ? synthwave.scale : [40, 43, 47, 52, 55, 59];
+    synthwave.chordIndex = (synthwave.chordIndex + (Math.random() > 0.5 ? 2 : 1)) % scale.length;
+    const rootMidi = scale[synthwave.chordIndex];
+    const chordTemplate = [0, 4, 7];
+    synthwave.padVoices.forEach((voice, idx) => {
+        const note = rootMidi + chordTemplate[idx % chordTemplate.length] + voice.offset;
+        const freq = midiToFrequency(note);
+        voice.osc.frequency.cancelScheduledValues(time);
+        voice.osc.frequency.setValueAtTime(freq, time);
+        voice.osc.frequency.linearRampToValueAtTime(freq * 1.01, time + 0.8);
+        voice.gain.gain.cancelScheduledValues(time);
+        const level = 0.04 + 0.02 * (idx % chordTemplate.length);
+        voice.gain.gain.setTargetAtTime(level, time, 0.6);
+    });
+    if (synthwave.padFilter) {
+        const targetFreq = 360 + Math.random() * 900;
+        synthwave.padFilter.frequency.setTargetAtTime(targetFreq, time, 0.7);
+    }
+    if (synthwave.padGain) {
+        const padLevel = 0.16 + Math.random() * 0.05;
+        synthwave.padGain.gain.cancelScheduledValues(time);
+        synthwave.padGain.gain.setTargetAtTime(padLevel, time, 0.8);
+    }
+}
+
+function applyMeasureDynamics(time) {
+    if (!synthwave.masterGain) return;
+    const masterLevel = 0.18 + Math.random() * 0.08;
+    synthwave.masterGain.gain.cancelScheduledValues(time);
+    synthwave.masterGain.gain.setTargetAtTime(masterLevel, time, 0.85);
+    if (synthwave.leadGain) {
+        const leadLevel = 0.3 + Math.random() * 0.12;
+        synthwave.leadGain.gain.setTargetAtTime(leadLevel, time, 0.7);
+    }
+    if (synthwave.drumGain) {
+        const drumLevel = 0.55 + Math.random() * 0.18;
+        synthwave.drumGain.gain.setTargetAtTime(drumLevel, time, 0.5);
+    }
+    if (synthwave.bassGain) {
+        const bassLevel = 0.7 + Math.random() * 0.12;
+        synthwave.bassGain.gain.setTargetAtTime(bassLevel, time, 0.6);
+    }
+}
+
+function triggerKick(time) {
+    if (!synthwave.kickGain) return;
+    const ctx = synthwave.context;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(68, time);
+    osc.frequency.exponentialRampToValueAtTime(30, time + 0.2);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.9, time + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+    osc.connect(gain).connect(synthwave.kickGain);
+    osc.start(time);
+    osc.stop(time + 0.4);
+}
+
+function createNoiseBuffer(ctx) {
+    const duration = 0.5;
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+}
+
+function midiToFrequency(note) {
+    return 440 * Math.pow(2, (note - 69) / 12);
+}
+
+function updateToggleMusicButton() {
+    if (toggleMusicBtn) {
+        toggleMusicBtn.textContent = synthwave.isPlaying ? 'Stop Synthwave' : 'Play Synthwave';
+    }
 }
 
 // --- Pause Handling ---
