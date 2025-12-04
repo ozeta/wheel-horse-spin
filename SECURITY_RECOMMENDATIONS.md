@@ -34,7 +34,7 @@ app.use('/api/', apiLimiter);
 Install sanitization library:
 ```bash
 cd multiplayer-race
-npm install validator xss --save
+npm install validator xss
 ```
 
 Add validation helpers:
@@ -115,7 +115,7 @@ wss.on('connection', (ws, req) => {
 Install helmet:
 ```bash
 cd multiplayer-race
-npm install helmet --save
+npm install helmet
 ```
 
 Add to server.js:
@@ -154,7 +154,7 @@ app.use(helmet({
 Install CORS:
 ```bash
 cd multiplayer-race
-npm install cors --save
+npm install cors
 ```
 
 Add configuration:

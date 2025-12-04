@@ -32,12 +32,14 @@ All database queries in the application use parameterized queries (prepared stat
 
 ### 3.1 User Input Entry Points
 
-| Entry Point | Location | Input Type | Validated |
-|-------------|----------|------------|-----------|
-| Username (path param) | `/api/leaderboard/player/:username` | String | ✅ Parameterized |
-| Username (WebSocket) | `msg.username` | String | ⚠️ Length only |
-| Room ID (query param) | Various endpoints | String | ✅ Parameterized |
-| Room ID (WebSocket) | `msg.roomId` | String | ⚠️ Minimal |
+| Entry Point | Location | Input Type | SQL Injection Protected | Input Validation |
+|-------------|----------|------------|------------------------|------------------|
+| Username (path param) | `/api/leaderboard/player/:username` | String | ✅ Parameterized | ⚠️ Length only |
+| Username (WebSocket) | `msg.username` | String | ✅ Parameterized | ⚠️ Length only |
+| Room ID (query param) | Various endpoints | String | ✅ Parameterized | ⚠️ Minimal |
+| Room ID (WebSocket) | `msg.roomId` | String | ✅ Parameterized | ⚠️ Minimal |
+
+**Note:** All inputs are protected against SQL injection via parameterized queries. The "Input Validation" column refers to general validation (format, sanitization) which is separate from SQL injection protection.
 
 ---
 

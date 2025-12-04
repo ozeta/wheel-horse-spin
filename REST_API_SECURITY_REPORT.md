@@ -211,7 +211,7 @@ app.get('/api/leaderboard/player/:username', async (req, res) => {
 |--------|--------|-------|
 | Authentication | ❌ None | Public data (acceptable) |
 | Rate Limiting | ❌ Missing | Can enumerate all users |
-| Input Validation | ⚠️ Minimal | Only String() + trim() |
+| Input Validation | ⚠️ Minimal | String() + trim() + max 40 chars (line 669) |
 | SQL Injection | ✅ Secure | Parameterized query |
 | Error Handling | ✅ Good | Try-catch present |
 | User Enumeration | ⚠️ Possible | Can probe for usernames |
@@ -230,10 +230,12 @@ app.get('/api/leaderboard/player/:username', async (req, res) => {
    // - Accepts special characters
    ```
 
+   **Note:** Length is enforced (40 chars max in WebSocket handler), but no format or character validation.
+   
    **Test Cases:**
-   - `../../../etc/passwd` - Path traversal (not applicable but shows lack of validation)
-   - `<script>alert(1)</script>` - XSS (not directly exploitable but poor practice)
-   - `' OR '1'='1` - SQL injection attempt (blocked by parameterization, but shows need for validation)
+   - `../../../etc/passwd` - Path traversal (shows lack of format validation)
+   - `<script>alert(1)</script>` - XSS (not directly exploitable in JSON but poor practice)
+   - `' OR '1'='1` - SQL injection attempt (blocked by parameterization, but indicates need for format validation)
 
 2. **User Enumeration (Medium):**
    - Attacker can probe for valid usernames
@@ -728,17 +730,20 @@ ab -n 100 -c 10 http://localhost:8080/api/leaderboard/room-stats?room=test
 
 ## 10. Compliance Checklist
 
-- [ ] OWASP API Security Top 10
-  - [ ] API1: Broken Object Level Authorization (N/A)
-  - [x] API2: Broken Authentication (None by design)
-  - [ ] API3: Broken Object Property Level Authorization
-  - [ ] API4: Unrestricted Resource Consumption ❌
-  - [ ] API5: Broken Function Level Authorization (N/A)
-  - [x] API6: Unrestricted Access to Sensitive Business Flows ❌
-  - [ ] API7: Server Side Request Forgery (N/A)
-  - [ ] API8: Security Misconfiguration ❌
-  - [ ] API9: Improper Inventory Management ✅
-  - [ ] API10: Unsafe Consumption of APIs (N/A)
+### OWASP API Security Top 10 Compliance
+
+| Item | Status | Notes |
+|------|--------|-------|
+| API1: Broken Object Level Authorization | N/A | No user objects/ownership |
+| API2: Broken Authentication | ⚠️ By Design | No auth required (public game) |
+| API3: Broken Object Property Level Authorization | ⚠️ | Public data exposure acceptable |
+| API4: Unrestricted Resource Consumption | ❌ | Missing rate limiting |
+| API5: Broken Function Level Authorization | N/A | No privileged functions |
+| API6: Unrestricted Access to Sensitive Business Flows | ⚠️ | User enumeration possible |
+| API7: Server Side Request Forgery | N/A | No external requests |
+| API8: Security Misconfiguration | ❌ | Missing headers, rate limits |
+| API9: Improper Inventory Management | ✅ | Well documented |
+| API10: Unsafe Consumption of APIs | N/A | No external API consumption |
 
 ---
 
