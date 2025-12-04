@@ -34,6 +34,13 @@ const synthwave = {
   hatPattern: [],
   snareSteps: [],
   scale: [],
+  kickGain: null,
+  kickPattern: [],
+  padGain: null,
+  padFilter: null,
+  padVoices: [],
+  chordIndex: 0,
+  lastMeasureTarget: 0,
 };
 
 // DOM references
@@ -814,6 +821,9 @@ function startSynthwave() {
     synthwave.stepIndex = 0;
     synthwave.nextNoteTime = ctx.currentTime + 0.12;
     generateSynthwavePatterns();
+    ensurePadVoices(ctx);
+    updatePadChord(ctx.currentTime + 0.05);
+    applyMeasureDynamics(ctx.currentTime + 0.1);
     synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
     synthwave.masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
     synthwave.masterGain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 1.0);
@@ -837,6 +847,14 @@ function stopSynthwave() {
     synthwave.schedulerId = null;
   }
   const ctx = synthwave.context;
+  if (synthwave.padGain) {
+    synthwave.padGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.padGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.3);
+  }
+  if (synthwave.kickGain) {
+    synthwave.kickGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.kickGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.15);
+  }
   synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
   synthwave.masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
   synthwave.nextNoteTime = 0;
@@ -858,6 +876,10 @@ function initSynthwaveContext() {
   synthwave.masterGain.gain.value = 0.0001;
   synthwave.masterGain.connect(ctx.destination);
 
+  synthwave.kickGain = ctx.createGain();
+  synthwave.kickGain.gain.value = 0.6;
+  synthwave.kickGain.connect(synthwave.masterGain);
+
   synthwave.bassGain = ctx.createGain();
   synthwave.bassGain.gain.value = 0.75;
   synthwave.bassGain.connect(synthwave.masterGain);
@@ -869,6 +891,17 @@ function initSynthwaveContext() {
   synthwave.drumGain = ctx.createGain();
   synthwave.drumGain.gain.value = 0.65;
   synthwave.drumGain.connect(synthwave.masterGain);
+
+  synthwave.padFilter = ctx.createBiquadFilter();
+  synthwave.padFilter.type = 'lowpass';
+  synthwave.padFilter.frequency.value = 400;
+  synthwave.padFilter.Q.value = 0.8;
+
+  synthwave.padGain = ctx.createGain();
+  synthwave.padGain.gain.value = 0.0001;
+  synthwave.padFilter.connect(synthwave.padGain);
+  synthwave.padGain.connect(synthwave.masterGain);
+  synthwave.padVoices = [];
 
   synthwave.noiseBuffer = createNoiseBuffer(ctx);
   return ctx;
@@ -883,14 +916,21 @@ function runSynthwaveScheduler() {
     scheduleSynthwaveStep(synthwave.stepIndex, synthwave.nextNoteTime);
     synthwave.nextNoteTime += synthwave.beatDuration;
     synthwave.stepIndex = (synthwave.stepIndex + 1) % 16;
-    if (synthwave.stepIndex === 0 && Math.random() > 0.6) {
-      mutateSynthwavePatterns();
+    if (synthwave.stepIndex === 0) {
+      if (Math.random() > 0.6) {
+        mutateSynthwavePatterns();
+      }
+      updatePadChord(synthwave.nextNoteTime);
+      applyMeasureDynamics(synthwave.nextNoteTime);
     }
   }
   synthwave.schedulerId = requestAnimationFrame(runSynthwaveScheduler);
 }
 
 function scheduleSynthwaveStep(step, time) {
+  if (synthwave.kickPattern[step]) {
+    triggerKick(time);
+  }
   const bassFreq = synthwave.bassPattern[step];
   if (bassFreq) {
     triggerBass(time, bassFreq);
@@ -941,12 +981,35 @@ function generateSynthwavePatterns() {
 
   synthwave.hatPattern = new Array(16).fill(true).map(() => Math.random() > 0.12);
   synthwave.snareSteps = [4, 12];
+
+  const kickPattern = new Array(16).fill(false);
+  for (let step = 0; step < 16; step += 4) {
+    kickPattern[step] = true;
+    if (step + 2 < 16 && Math.random() > 0.65) {
+      kickPattern[step + 2] = true;
+    }
+  }
+  if (Math.random() > 0.7) {
+    const extra = Math.floor(Math.random() * 16);
+    kickPattern[extra] = true;
+  }
+  synthwave.kickPattern = kickPattern;
 }
 
 function mutateSynthwavePatterns() {
   const scale = synthwave.scale;
   if (!scale || scale.length === 0) {
     return;
+  }
+  synthwave.kickPattern = synthwave.kickPattern.map((on, idx) => {
+    if (idx % 4 === 0) return true;
+    if (Math.random() > 0.92) return !on;
+    if (on && Math.random() > 0.96) return false;
+    return on;
+  });
+  if (Math.random() > 0.55) {
+    const accent = Math.floor(Math.random() * 16);
+    synthwave.kickPattern[accent] = true;
   }
   for (let i = 0; i < synthwave.leadPattern.length; i++) {
     if (Math.random() > 0.94) {
@@ -1050,6 +1113,89 @@ function triggerSnare(time) {
   source.connect(filter).connect(gain).connect(synthwave.drumGain);
   source.start(time);
   source.stop(time + 0.35);
+}
+
+function ensurePadVoices(ctx) {
+  if (!ctx || !synthwave.padFilter) return;
+  if (Array.isArray(synthwave.padVoices) && synthwave.padVoices.length) return;
+  synthwave.padVoices = [];
+  const chordOffsets = [0, 7, 12, 24];
+  chordOffsets.forEach((offset, idx) => {
+    const osc = ctx.createOscillator();
+    osc.type = idx % 2 === 0 ? 'sawtooth' : 'triangle';
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    osc.connect(gain).connect(synthwave.padFilter);
+    osc.start();
+    synthwave.padVoices.push({ osc, gain, offset });
+  });
+}
+
+function updatePadChord(time) {
+  const ctx = synthwave.context;
+  if (!ctx) return;
+  ensurePadVoices(ctx);
+  if (!Array.isArray(synthwave.padVoices) || synthwave.padVoices.length === 0) return;
+  const scale = (synthwave.scale && synthwave.scale.length) ? synthwave.scale : [40, 43, 47, 52, 55, 59];
+  synthwave.chordIndex = (synthwave.chordIndex + (Math.random() > 0.5 ? 2 : 1)) % scale.length;
+  const rootMidi = scale[synthwave.chordIndex];
+  const chordTemplate = [0, 4, 7];
+  synthwave.padVoices.forEach((voice, idx) => {
+    const note = rootMidi + chordTemplate[idx % chordTemplate.length] + voice.offset;
+    const freq = midiToFrequency(note);
+    voice.osc.frequency.cancelScheduledValues(time);
+    voice.osc.frequency.setValueAtTime(freq, time);
+    voice.osc.frequency.linearRampToValueAtTime(freq * 1.01, time + 0.8);
+    voice.gain.gain.cancelScheduledValues(time);
+    const level = 0.04 + 0.02 * (idx % chordTemplate.length);
+    voice.gain.gain.setTargetAtTime(level, time, 0.6);
+  });
+  if (synthwave.padFilter) {
+    const targetFreq = 360 + Math.random() * 900;
+    synthwave.padFilter.frequency.setTargetAtTime(targetFreq, time, 0.7);
+  }
+  if (synthwave.padGain) {
+    const padLevel = 0.16 + Math.random() * 0.05;
+    synthwave.padGain.gain.cancelScheduledValues(time);
+    synthwave.padGain.gain.setTargetAtTime(padLevel, time, 0.8);
+  }
+}
+
+function applyMeasureDynamics(time) {
+  if (!synthwave.masterGain) return;
+  const masterLevel = 0.18 + Math.random() * 0.08;
+  synthwave.masterGain.gain.cancelScheduledValues(time);
+  synthwave.masterGain.gain.setTargetAtTime(masterLevel, time, 0.85);
+  if (synthwave.leadGain) {
+    const leadLevel = 0.3 + Math.random() * 0.12;
+    synthwave.leadGain.gain.setTargetAtTime(leadLevel, time, 0.7);
+  }
+  if (synthwave.drumGain) {
+    const drumLevel = 0.55 + Math.random() * 0.18;
+    synthwave.drumGain.gain.setTargetAtTime(drumLevel, time, 0.5);
+  }
+  if (synthwave.bassGain) {
+    const bassLevel = 0.7 + Math.random() * 0.12;
+    synthwave.bassGain.gain.setTargetAtTime(bassLevel, time, 0.6);
+  }
+}
+
+function triggerKick(time) {
+  if (!synthwave.kickGain) return;
+  const ctx = synthwave.context;
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(68, time);
+  osc.frequency.exponentialRampToValueAtTime(30, time + 0.2);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.linearRampToValueAtTime(0.9, time + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+  osc.connect(gain).connect(synthwave.kickGain);
+  osc.start(time);
+  osc.stop(time + 0.4);
 }
 
 function createNoiseBuffer(ctx) {
