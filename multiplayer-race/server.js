@@ -19,7 +19,8 @@ require('dotenv').config();
 
 const http = require('http');
 const express = require('express');
-const RateLimit = require('express-rate-limit');
+const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { execSync } = require('child_process');
@@ -267,6 +268,26 @@ function stopTick(room) {
 // --- Server Setup ---
 const app = express();
 
+const rateLimitWindowSeconds = Math.max(1, Number(process.env.DB_RATE_LIMIT_WINDOW_SECONDS || 15));
+const rateLimitMaxRequests = Math.max(1, Number(process.env.DB_RATE_LIMIT_MAX_REQUESTS || 60));
+const dbRateLimiter = rateLimit({
+  windowMs: rateLimitWindowSeconds * 1000,
+  max: rateLimitMaxRequests,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests. Please slow down and try again.' });
+  },
+  keyGenerator: (req, res) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) {
+      const first = forwarded.split(',')[0];
+      if (first) return first.trim();
+    }
+    return ipKeyGenerator(req, res);
+  }
+});
+
 // Serve static files from parent directory (repo root)
 const staticPath = path.join(__dirname, '..');
 app.use(express.static(staticPath));
@@ -292,7 +313,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Leaderboard APIs (DB optional)
-app.get('/api/leaderboard/fastest', async (req, res) => {
+app.get('/api/leaderboard/fastest', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   try {
     const { rows } = await dbPool.query(`
@@ -308,7 +329,7 @@ app.get('/api/leaderboard/fastest', async (req, res) => {
   }
 });
 
-app.get('/api/leaderboard/top', async (req, res) => {
+app.get('/api/leaderboard/top', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   try {
     const { rows } = await dbPool.query(`
@@ -325,7 +346,7 @@ app.get('/api/leaderboard/top', async (req, res) => {
   }
 });
 
-app.get('/api/leaderboard/player/:username', async (req, res) => {
+app.get('/api/leaderboard/player/:username', dbRateLimiter, async (req, res) => {
   const username = String(req.params.username || '').trim();
   if (!dbPool || !username) return res.json({ items: [] });
   try {
@@ -346,7 +367,7 @@ app.get('/api/leaderboard/player/:username', async (req, res) => {
 });
 
 // Players who most recently arrived last among humans, with their last time
-app.get('/api/leaderboard/last-humans', async (req, res) => {
+app.get('/api/leaderboard/last-humans', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   try {
     const room = (req.query.room && String(req.query.room).trim()) || null;
@@ -372,7 +393,7 @@ app.get('/api/leaderboard/last-humans', async (req, res) => {
 });
 
 // Room summary: per human player -> wins count, last-place count, last win time+seconds, last last-place time+seconds
-app.get('/api/leaderboard/room-summary', async (req, res) => {
+app.get('/api/leaderboard/room-summary', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   const room = (req.query.room && String(req.query.room).trim()) || null;
   if (!room) return res.json({ items: [] });
@@ -450,7 +471,7 @@ app.get('/api/leaderboard/room-summary', async (req, res) => {
 });
 
 // Room loses: humans ordered by number of last places (descending)
-app.get('/api/leaderboard/room-loses', async (req, res) => {
+app.get('/api/leaderboard/room-loses', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ items: [] });
   const room = (req.query.room && String(req.query.room).trim()) || null;
   if (!room) return res.json({ items: [] });
@@ -476,7 +497,7 @@ app.get('/api/leaderboard/room-loses', async (req, res) => {
 });
 
 // Room aggregate stats
-app.get('/api/leaderboard/room-stats', async (req, res) => {
+app.get('/api/leaderboard/room-stats', dbRateLimiter, async (req, res) => {
   if (!dbPool) return res.json({ room: null, stats: null });
   const room = (req.query.room && String(req.query.room).trim()) || null;
   if (!room) return res.json({ room: null, stats: null });
@@ -549,7 +570,7 @@ app.get('/api/leaderboard/room-stats', async (req, res) => {
 });
 
 // Rate limiter for serving game.html (fallback route)
-const rootLimiter = RateLimit({
+const rootLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
 });
