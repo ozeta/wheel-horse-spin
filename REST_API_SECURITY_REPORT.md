@@ -260,8 +260,11 @@ app.get('/api/leaderboard/player/:username', async (req, res) => {
    
    app.get('/api/leaderboard/player/:username', async (req, res) => {
      const username = validateUsername(req.params.username);
-     if (!username || !dbPool) {
+     if (!username) {
        return res.status(400).json({ error: 'Invalid username format' });
+     }
+     if (!dbPool) {
+       return res.status(503).json({ error: 'Database unavailable' });
      }
      // ... query logic
    });

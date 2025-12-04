@@ -146,7 +146,7 @@ await dbPool.query(`
 - WebSocket connections unlimited (resource exhaustion risk)
 
 **Recommendations:**
-1. **CRITICAL:** Add rate limiting to all API endpoints
+1. **CRITICAL:** Add rate limiting to all API endpoints using express-rate-limit
 2. Add WebSocket connection limits per IP
 3. Implement request throttling for database queries
 4. Add connection limits per room

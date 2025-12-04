@@ -80,7 +80,7 @@ wss.on('connection', (ws, req) => {
   // Check connection limit
   const ipConnections = connectionsByIP.get(ip) || 0;
   if (ipConnections >= MAX_CONNECTIONS_PER_IP) {
-    ws.close(1008, 'Too many connections from this IP');
+    ws.close(1013, 'Too many connections from this IP, try again later');
     return;
   }
   
