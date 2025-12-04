@@ -190,6 +190,17 @@ function handleMessage(msg) {
       // Update UI to reflect unready state
       renderPlayers();
       updateButtons();
+      // Refresh leaderboards immediately on race completion
+      if (typeof window.refreshLeaderboards === 'function') {
+        try {
+          window.refreshLeaderboards();
+          setTimeout(() => {
+            try { window.refreshLeaderboards(); } catch (err) { console.warn('refreshLeaderboards retry failed', err); }
+          }, 800);
+        } catch (err) {
+          console.warn('refreshLeaderboards failed', err);
+        }
+      }
       break;
     case 'boost':
       // show notification on boost press/release
