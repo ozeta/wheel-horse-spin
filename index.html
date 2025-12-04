@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Wheel Horse Spin Game</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="cyberpunk.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
 </head>
 <body class="landing-page">
     <header class="menu-bar">
@@ -60,134 +64,6 @@
     <footer class="landing-footer">
         <span>&copy; Wheel Horse Spin</span>
     </footer>
-    <style>
-        body.landing-page {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            background: #f4f5f7;
-            color: #1c1e21;
-        }
-        body.landing-page .menu-bar {
-            position: static;
-            box-shadow: none;
-            height: auto;
-            padding: 24px 0;
-        }
-        .landing-main {
-            flex: 1;
-            display: grid;
-            gap: 24px;
-            padding: 32px;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            max-width: 1080px;
-            margin: 0 auto;
-            width: 100%;
-        }
-        .landing-overview {
-            grid-column: 1 / -1;
-            display: flex;
-            gap: 24px;
-            flex-wrap: wrap;
-        }
-        .landing-overview-card {
-            flex: 1 1 320px;
-            background: linear-gradient(135deg, #eff6ff, #fff);
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 12px 24px rgba(30, 64, 175, 0.12);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .landing-overview-card h2 {
-            margin: 0;
-            font-size: 1.35rem;
-            color: #1e3a8a;
-        }
-        .landing-overview-card p {
-            margin: 0;
-            line-height: 1.45;
-            font-size: 0.98rem;
-        }
-        .landing-card {
-            background: #fff;
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 10px 25px rgba(31, 41, 55, 0.08);
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        .landing-card h2 {
-            margin: 0;
-            font-size: 1.5rem;
-        }
-        .landing-card p {
-            margin: 0;
-            line-height: 1.5;
-        }
-        .landing-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .landing-input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .landing-input-group label {
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-        .landing-input-group input {
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid #cbd5f5;
-            font-size: 0.95rem;
-        }
-        .landing-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 12px 18px;
-            border-radius: 999px;
-            background: linear-gradient(135deg, #2563eb, #1d4ed8);
-            color: #fff;
-            text-decoration: none;
-            font-weight: 600;
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-        .landing-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 18px rgba(37, 99, 235, 0.25);
-        }
-        .landing-link {
-            font-size: 0.95rem;
-            color: #2563eb;
-            text-decoration: none;
-        }
-        .landing-link:hover { text-decoration: underline; }
-        .landing-list {
-            margin: 0;
-            padding: 0 0 0 18px;
-            display: grid;
-            gap: 8px;
-        }
-        .landing-footer {
-            text-align: center;
-            padding: 16px 0 24px;
-            font-size: 0.9rem;
-            color: #6b7280;
-        }
-        @media (max-width: 600px) {
-            .landing-main { padding: 20px; }
-            .landing-overview { gap: 16px; }
-            .landing-overview-card { padding: 20px; }
-            .landing-card { padding: 20px; }
-        }
-    </style>
     <script>
         (function updateMultiplayerLink() {
             const usernameInput = document.getElementById('landing-username');
