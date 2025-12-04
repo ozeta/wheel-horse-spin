@@ -1,7 +1,7 @@
 let horses = [];
 let horseObjects = [];
 let horseImages = {}; // Cache for loaded avatar images
-let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn, pauseGameBtn;
+let horseList, addHorseBtn, clearDataBtn, runRaceBtn, resetGameBtn, shareUrlBtn, pauseGameBtn, toggleMusicBtn;
 let winner = null;
 // --- Timing ---
 let raceStartMillis = 0;
@@ -27,6 +27,26 @@ let multiplayer = {
     lastTickMs: null,
     username: null,
     roomId: null,
+};
+
+const synthwave = {
+    context: null,
+    masterGain: null,
+    bassGain: null,
+    leadGain: null,
+    drumGain: null,
+    noiseBuffer: null,
+    isPlaying: false,
+    tempo: 0,
+    beatDuration: 0,
+    nextNoteTime: 0,
+    stepIndex: 0,
+    schedulerId: null,
+    bassPattern: [],
+    leadPattern: [],
+    hatPattern: [],
+    snareSteps: [],
+    scale: [],
 };
 
 // --- Chessboard SVG ---
@@ -86,6 +106,7 @@ function setup() {
     resetGameBtn = document.getElementById('reset-game');
     shareUrlBtn = document.getElementById('share-url');
     pauseGameBtn = document.getElementById('pause-game');
+    toggleMusicBtn = document.getElementById('toggle-music');
     // Multiplayer DOM elements
     multiplayer.serverInput = document.getElementById('mp-server');
     multiplayer.roomInput = document.getElementById('mp-room');
@@ -104,6 +125,16 @@ function setup() {
     resetGameBtn.addEventListener('click', resetGame);
     shareUrlBtn.addEventListener('click', copyShareableURL);
     pauseGameBtn.addEventListener('click', togglePause);
+    if (toggleMusicBtn) {
+        toggleMusicBtn.addEventListener('click', toggleSynthwave);
+        updateToggleMusicButton();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            stopSynthwave();
+        }
+    });
     // Multiplayer events
     if (multiplayer.connectBtn) {
         multiplayer.connectBtn.addEventListener('click', mpConnect);
@@ -658,7 +689,7 @@ function drawTrack() {
     for (let row = 0; row < tiles; row++) {
         for (let col = 0; col < tiles; col++) {
             const isDark = (row + col) % 2 === 1;
-            fill(isDark ? color(255, 0, 212, 220) : color(255, 255, 255, 220));
+            fill(isDark ? color(197, 0, 60, 220) : color(136, 4, 37, 220));
             rect(
                 finishLineX + col * tileW,
                 finishLineYStart + row * tileH,
@@ -1170,6 +1201,289 @@ function copyShareableURL() {
     }).catch(() => {
         alert('Failed to copy URL.');
     });
+}
+
+// --- Synthwave Soundtrack ---
+function toggleSynthwave() {
+    if (synthwave.isPlaying) {
+        stopSynthwave();
+    } else {
+        startSynthwave();
+    }
+}
+
+function startSynthwave() {
+    const ctx = initSynthwaveContext();
+    if (!ctx) {
+        alert('Your browser does not support Web Audio, so the synthwave track cannot play.');
+        return;
+    }
+
+    synthwave.isPlaying = true;
+    updateToggleMusicButton();
+    const resumePromise = ctx.state === 'suspended' ? ctx.resume() : Promise.resolve();
+    resumePromise.then(() => {
+        synthwave.tempo = 92 + Math.random() * 14; // 92-106 BPM
+        synthwave.beatDuration = 60 / synthwave.tempo / 4; // 16th notes
+        synthwave.stepIndex = 0;
+        synthwave.nextNoteTime = ctx.currentTime + 0.12;
+        generateSynthwavePatterns();
+        synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+        synthwave.masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        synthwave.masterGain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 1.0);
+        runSynthwaveScheduler();
+        updateToggleMusicButton();
+    }).catch((error) => {
+        console.warn('Unable to start synthwave audio:', error);
+        synthwave.isPlaying = false;
+        updateToggleMusicButton();
+    });
+}
+
+function stopSynthwave() {
+    if (!synthwave.context) {
+        updateToggleMusicButton();
+        return;
+    }
+    synthwave.isPlaying = false;
+    if (synthwave.schedulerId) {
+        cancelAnimationFrame(synthwave.schedulerId);
+        synthwave.schedulerId = null;
+    }
+    const ctx = synthwave.context;
+    synthwave.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+    synthwave.masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+    synthwave.nextNoteTime = 0;
+    synthwave.stepIndex = 0;
+    updateToggleMusicButton();
+}
+
+function initSynthwaveContext() {
+    if (synthwave.context) {
+        return synthwave.context;
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+        return null;
+    }
+    const ctx = new AudioCtx();
+    synthwave.context = ctx;
+    synthwave.masterGain = ctx.createGain();
+    synthwave.masterGain.gain.value = 0.0001;
+    synthwave.masterGain.connect(ctx.destination);
+
+    synthwave.bassGain = ctx.createGain();
+    synthwave.bassGain.gain.value = 0.75;
+    synthwave.bassGain.connect(synthwave.masterGain);
+
+    synthwave.leadGain = ctx.createGain();
+    synthwave.leadGain.gain.value = 0.38;
+    synthwave.leadGain.connect(synthwave.masterGain);
+
+    synthwave.drumGain = ctx.createGain();
+    synthwave.drumGain.gain.value = 0.65;
+    synthwave.drumGain.connect(synthwave.masterGain);
+
+    synthwave.noiseBuffer = createNoiseBuffer(ctx);
+    return ctx;
+}
+
+function runSynthwaveScheduler() {
+    if (!synthwave.isPlaying || !synthwave.context) {
+        return;
+    }
+    const ctx = synthwave.context;
+    while (synthwave.nextNoteTime < ctx.currentTime + 0.2) {
+        scheduleSynthwaveStep(synthwave.stepIndex, synthwave.nextNoteTime);
+        synthwave.nextNoteTime += synthwave.beatDuration;
+        synthwave.stepIndex = (synthwave.stepIndex + 1) % 16;
+        if (synthwave.stepIndex === 0 && Math.random() > 0.6) {
+            mutateSynthwavePatterns();
+        }
+    }
+    synthwave.schedulerId = requestAnimationFrame(runSynthwaveScheduler);
+}
+
+function scheduleSynthwaveStep(step, time) {
+    const bassFreq = synthwave.bassPattern[step];
+    if (bassFreq) {
+        triggerBass(time, bassFreq);
+    }
+
+    const leadFreq = synthwave.leadPattern[step];
+    if (leadFreq) {
+        triggerLead(time, leadFreq);
+    }
+
+    if (synthwave.hatPattern[step]) {
+        triggerHat(time);
+    }
+
+    if (synthwave.snareSteps.includes(step)) {
+        triggerSnare(time + synthwave.beatDuration * 0.05);
+    }
+}
+
+function generateSynthwavePatterns() {
+    const rootChoices = [40, 42, 45, 47];
+    const root = rootChoices[Math.floor(Math.random() * rootChoices.length)];
+    const scaleOffsets = [0, 2, 5, 7, 9, 12];
+    const scale = scaleOffsets.map(offset => root + offset);
+    synthwave.scale = scale;
+
+    const bassPattern = new Array(16).fill(null);
+    for (let step = 0; step < 16; step++) {
+        if (step % 4 === 0 || Math.random() > 0.62) {
+            const octaveShift = Math.random() > 0.7 ? -12 : 0;
+            const noteIndex = (step / 4 + Math.floor(Math.random() * 2)) % scale.length;
+            bassPattern[step] = midiToFrequency(scale[noteIndex] + octaveShift);
+        }
+    }
+    if (!bassPattern[0]) {
+        bassPattern[0] = midiToFrequency(scale[0]);
+    }
+    synthwave.bassPattern = bassPattern;
+
+    const leadPattern = new Array(16).fill(null);
+    for (let step = 0; step < 16; step++) {
+        if (Math.random() > 0.7) {
+            const note = scale[Math.floor(Math.random() * scale.length)] + 12;
+            leadPattern[step] = midiToFrequency(note + (Math.random() > 0.6 ? 12 : 0));
+        }
+    }
+    synthwave.leadPattern = leadPattern;
+
+    synthwave.hatPattern = new Array(16).fill(true).map(() => Math.random() > 0.12);
+    synthwave.snareSteps = [4, 12];
+}
+
+function mutateSynthwavePatterns() {
+    const scale = synthwave.scale;
+    if (!scale || scale.length === 0) {
+        return;
+    }
+    for (let i = 0; i < synthwave.leadPattern.length; i++) {
+        if (Math.random() > 0.94) {
+            synthwave.leadPattern[i] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)] + 12);
+        } else if (Math.random() > 0.97) {
+            synthwave.leadPattern[i] = null;
+        }
+    }
+    if (Math.random() > 0.7) {
+        const idx = Math.floor(Math.random() * synthwave.bassPattern.length);
+        synthwave.bassPattern[idx] = midiToFrequency(scale[Math.floor(Math.random() * scale.length)]);
+    }
+    synthwave.hatPattern = synthwave.hatPattern.map(flag => (Math.random() > 0.97 ? !flag : flag));
+}
+
+function triggerBass(time, frequency) {
+    const ctx = synthwave.context;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(frequency, time);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.32, time + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 1.6);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, time);
+    filter.Q.value = 0.8;
+
+    osc.connect(filter).connect(gain).connect(synthwave.bassGain);
+    osc.start(time);
+    osc.stop(time + synthwave.beatDuration * 1.6);
+}
+
+function triggerLead(time, frequency) {
+    const ctx = synthwave.context;
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(frequency, time);
+    osc.frequency.linearRampToValueAtTime(frequency * 1.01, time + synthwave.beatDuration * 0.6);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.18, time + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + synthwave.beatDuration * 2.2);
+
+    const delay = ctx.createDelay();
+    delay.delayTime.setValueAtTime(synthwave.beatDuration * 2, time);
+    const feedback = ctx.createGain();
+    feedback.gain.setValueAtTime(0.35, time);
+
+    delay.connect(feedback);
+    feedback.connect(delay);
+
+    osc.connect(gain);
+    gain.connect(synthwave.leadGain);
+    gain.connect(delay);
+    delay.connect(synthwave.leadGain);
+
+    osc.start(time);
+    osc.stop(time + synthwave.beatDuration * 2.4);
+}
+
+function triggerHat(time) {
+    if (!synthwave.noiseBuffer) return;
+    const ctx = synthwave.context;
+    const source = ctx.createBufferSource();
+    source.buffer = synthwave.noiseBuffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(8000, time);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, time);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
+
+    source.connect(filter).connect(gain).connect(synthwave.drumGain);
+    source.start(time);
+    source.stop(time + 0.12);
+}
+
+function triggerSnare(time) {
+    if (!synthwave.noiseBuffer) return;
+    const ctx = synthwave.context;
+    const source = ctx.createBufferSource();
+    source.buffer = synthwave.noiseBuffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1800, time);
+    filter.Q.value = 0.8;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, time);
+    gain.gain.linearRampToValueAtTime(0.24, time + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.35);
+
+    source.connect(filter).connect(gain).connect(synthwave.drumGain);
+    source.start(time);
+    source.stop(time + 0.35);
+}
+
+function createNoiseBuffer(ctx) {
+    const duration = 0.5;
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+}
+
+function midiToFrequency(note) {
+    return 440 * Math.pow(2, (note - 69) / 12);
+}
+
+function updateToggleMusicButton() {
+    if (toggleMusicBtn) {
+        toggleMusicBtn.textContent = synthwave.isPlaying ? 'Stop Synthwave' : 'Play Synthwave';
+    }
 }
 
 // --- Pause Handling ---
