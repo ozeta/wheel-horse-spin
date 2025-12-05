@@ -94,8 +94,14 @@ const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_D
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 
 // --- Security Constants ---
-const MAX_CONNECTIONS_PER_IP = Number(process.env.MAX_CONNECTIONS_PER_IP ?? 5);
-const MAX_MESSAGE_SIZE = Number(process.env.MAX_MESSAGE_SIZE ?? 10240); // 10KB
+const MAX_CONNECTIONS_PER_IP = (() => {
+  const val = parseInt(process.env.MAX_CONNECTIONS_PER_IP, 10);
+  return (val > 0 && val < 1000) ? val : 5;
+})();
+const MAX_MESSAGE_SIZE = (() => {
+  const val = parseInt(process.env.MAX_MESSAGE_SIZE, 10);
+  return (val > 0 && val < 100000) ? val : 10240; // 10KB default, max 100KB
+})();
 
 // --- Data Structures ---
 const rooms = new Map(); // roomId -> Room
@@ -109,8 +115,8 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function sanitizeUsername(input) {
   if (!input || typeof input !== 'string') return '';
   const trimmed = input.trim();
-  // Allow only alphanumeric, spaces, underscores, hyphens
-  if (!/^[a-zA-Z0-9_ -]+$/.test(trimmed)) return '';
+  // Allow only alphanumeric, underscores, hyphens (no spaces to prevent confusion attacks)
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
   return trimmed.substring(0, 40);
 }
 
@@ -120,6 +126,20 @@ function sanitizeRoomId(input) {
   // Allow only alphanumeric, underscores, hyphens
   if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
   return trimmed.substring(0, 50);
+}
+
+// Extract client IP address (handles proxies and IPv6)
+function getClientIP(req) {
+  // Check X-Forwarded-For header first (for proxies/load balancers)
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    const ips = forwarded.split(',');
+    return ips[0].trim();
+  }
+  // Fall back to remoteAddress
+  const addr = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+  // Normalize IPv6-mapped IPv4 addresses
+  return addr.replace(/^::ffff:/, '');
 }
 
 function createRoom(roomId) {
@@ -290,6 +310,9 @@ function stopTick(room) {
 
 // --- Server Setup ---
 const app = express();
+
+// Trust proxy for proper IP detection behind load balancers
+app.set('trust proxy', true);
 
 // Security headers
 app.use(helmet({
@@ -625,7 +648,7 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
   const clientId = nextClientId++;
-  const ip = req.socket.remoteAddress;
+  const ip = getClientIP(req);
   
   // Check connection limit per IP
   const ipConnections = connectionsByIP.get(ip) || 0;
@@ -635,10 +658,9 @@ wss.on('connection', (ws, req) => {
     return;
   }
   
-  connectionsByIP.set(ip, ipConnections + 1);
-  
   let room = null;
   let player = null;
+  let connectionCounted = false;
 
   ws.on('message', (buf) => {
     // Check message size
@@ -655,6 +677,12 @@ wss.on('connection', (ws, req) => {
       const username = sanitizeUsername(msg.username) || `Player_${clientId}`;
       player = { id: clientId, username, ready: false, lane: null, ws, joinMs: nowMs(), lastResult: null };
       room.players.set(clientId, player);
+      
+      // Only count connection after successful setup
+      if (!connectionCounted) {
+        connectionsByIP.set(ip, ipConnections + 1);
+        connectionCounted = true;
+      }
       if (!room.hostId) room.hostId = clientId;
       allocateLanes(room);
       console.log(`[room:${room.id}] connect clientId=${clientId} username=${username} (hostId=${room.hostId})`);
@@ -760,12 +788,14 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    // Clean up connection counter
-    const count = connectionsByIP.get(ip) || 0;
-    if (count <= 1) {
-      connectionsByIP.delete(ip);
-    } else {
-      connectionsByIP.set(ip, count - 1);
+    // Clean up connection counter (only if connection was counted)
+    if (connectionCounted) {
+      const count = connectionsByIP.get(ip) || 0;
+      if (count <= 1) {
+        connectionsByIP.delete(ip);
+      } else {
+        connectionsByIP.set(ip, count - 1);
+      }
     }
     
     if (room && player) {
