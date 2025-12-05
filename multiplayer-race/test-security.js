@@ -54,8 +54,12 @@ async function testRateLimiting() {
       rateLimitedCount++;
       if (rateLimitedCount === 1) {
         console.log(`✓ Rate limit triggered at request ${i}`);
-        const body = JSON.parse(res.body);
-        console.log(`  Response: ${body.error}`);
+        try {
+          const body = JSON.parse(res.body);
+          console.log(`  Response: ${body.error}`);
+        } catch {
+          console.log(`  Response: ${res.body}`);
+        }
       }
     }
     // Small delay to avoid overwhelming the server

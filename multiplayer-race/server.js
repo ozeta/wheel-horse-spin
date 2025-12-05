@@ -96,12 +96,14 @@ const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 // --- Security Constants ---
 const MAX_CONNECTIONS_PER_IP = (() => {
   const val = parseInt(process.env.MAX_CONNECTIONS_PER_IP, 10);
-  return (val >= 1 && val <= 999) ? val : 5;
+  return (!isNaN(val) && val >= 1 && val <= 999) ? val : 5;
 })();
 const MAX_MESSAGE_SIZE = (() => {
   const val = parseInt(process.env.MAX_MESSAGE_SIZE, 10);
-  return (val >= 1 && val <= 100000) ? val : 10240; // 10KB default, max 100KB
+  return (!isNaN(val) && val >= 1 && val <= 100000) ? val : 10240; // 10KB default, max 100KB
 })();
+const MAX_USERNAME_LENGTH = 40;
+const MAX_ROOMID_LENGTH = 50;
 
 // --- Data Structures ---
 const rooms = new Map(); // roomId -> Room
@@ -117,7 +119,7 @@ function sanitizeUsername(input) {
   const trimmed = input.trim();
   // Allow only alphanumeric, underscores, hyphens (no spaces to prevent confusion attacks)
   if (!trimmed || !/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
-  return trimmed.substring(0, 40);
+  return trimmed.substring(0, MAX_USERNAME_LENGTH);
 }
 
 function sanitizeRoomId(input) {
@@ -125,7 +127,7 @@ function sanitizeRoomId(input) {
   const trimmed = input.trim();
   // Allow only alphanumeric, underscores, hyphens
   if (!trimmed || !/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
-  return trimmed.substring(0, 50);
+  return trimmed.substring(0, MAX_ROOMID_LENGTH);
 }
 
 // Extract client IP address (handles proxies and IPv6)
