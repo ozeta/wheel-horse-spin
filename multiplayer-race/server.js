@@ -94,14 +94,26 @@ const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_D
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 
 // --- Security Constants ---
+const MIN_CONNECTIONS_PER_IP = 1;
+const MAX_CONNECTIONS_PER_IP_LIMIT = 999;
+const DEFAULT_CONNECTIONS_PER_IP = 5;
+
+const MIN_MESSAGE_SIZE = 1;
+const MAX_MESSAGE_SIZE_LIMIT = 100000; // 100KB
+const DEFAULT_MESSAGE_SIZE = 10240; // 10KB
+
 const MAX_CONNECTIONS_PER_IP = (() => {
   const val = parseInt(process.env.MAX_CONNECTIONS_PER_IP, 10);
-  return (!isNaN(val) && val >= 1 && val <= 999) ? val : 5;
+  return (!isNaN(val) && val >= MIN_CONNECTIONS_PER_IP && val <= MAX_CONNECTIONS_PER_IP_LIMIT) 
+    ? val : DEFAULT_CONNECTIONS_PER_IP;
 })();
+
 const MAX_MESSAGE_SIZE = (() => {
   const val = parseInt(process.env.MAX_MESSAGE_SIZE, 10);
-  return (!isNaN(val) && val >= 1 && val <= 100000) ? val : 10240; // 10KB default, max 100KB
+  return (!isNaN(val) && val >= MIN_MESSAGE_SIZE && val <= MAX_MESSAGE_SIZE_LIMIT) 
+    ? val : DEFAULT_MESSAGE_SIZE;
 })();
+
 const MAX_USERNAME_LENGTH = 40;
 const MAX_ROOMID_LENGTH = 50;
 

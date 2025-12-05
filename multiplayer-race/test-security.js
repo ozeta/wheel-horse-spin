@@ -57,7 +57,7 @@ async function testRateLimiting() {
         try {
           const body = JSON.parse(res.body);
           console.log(`  Response: ${body.error}`);
-        } catch {
+        } catch (err) {
           console.log(`  Response: ${res.body}`);
         }
       }
