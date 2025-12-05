@@ -22,8 +22,6 @@ const express = require('express');
 const RateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const cors = require('cors');
-const validator = require('validator');
-const xss = require('xss');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { execSync } = require('child_process');
@@ -110,18 +108,18 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 // --- Input Sanitization Functions ---
 function sanitizeUsername(input) {
   if (!input || typeof input !== 'string') return '';
-  const cleaned = xss(input.trim());
+  const trimmed = input.trim();
   // Allow only alphanumeric, spaces, underscores, hyphens
-  if (!/^[a-zA-Z0-9_ -]+$/.test(cleaned)) return '';
-  return cleaned.substring(0, 40);
+  if (!/^[a-zA-Z0-9_ -]+$/.test(trimmed)) return '';
+  return trimmed.substring(0, 40);
 }
 
 function sanitizeRoomId(input) {
   if (!input || typeof input !== 'string') return '';
-  const cleaned = xss(input.trim());
+  const trimmed = input.trim();
   // Allow only alphanumeric, underscores, hyphens
-  if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) return '';
-  return cleaned.substring(0, 50);
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
+  return trimmed.substring(0, 50);
 }
 
 function createRoom(roomId) {
@@ -298,8 +296,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "cdn.jsdelivr.net"],
+      styleSrc: ["'self'"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'", "ws:", "wss:"],
     },
@@ -315,7 +313,7 @@ app.use(helmet({
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS 
     ? process.env.ALLOWED_ORIGINS.split(',') 
-    : '*',
+    : process.env.NODE_ENV === 'production' ? false : '*',
   methods: ['GET', 'POST'],
   credentials: false,
   maxAge: 86400 // 24 hours
