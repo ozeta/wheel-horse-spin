@@ -45,6 +45,7 @@ async function testRateLimiting() {
   let successCount = 0;
   let rateLimitedCount = 0;
   
+  // Make requests with small delays to simulate more realistic traffic
   for (let i = 1; i <= 35; i++) {
     const res = await makeRequest('/api/health');
     if (res.status === 200) {
@@ -57,6 +58,8 @@ async function testRateLimiting() {
         console.log(`  Response: ${body.error}`);
       }
     }
+    // Small delay to avoid overwhelming the server
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
   
   console.log(`Total: ${successCount} successful, ${rateLimitedCount} rate-limited`);

@@ -94,8 +94,8 @@ const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_D
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 
 // --- Security Constants ---
-const MAX_CONNECTIONS_PER_IP = 5;
-const MAX_MESSAGE_SIZE = 10240; // 10KB
+const MAX_CONNECTIONS_PER_IP = Number(process.env.MAX_CONNECTIONS_PER_IP ?? 5);
+const MAX_MESSAGE_SIZE = Number(process.env.MAX_MESSAGE_SIZE ?? 10240); // 10KB
 
 // --- Data Structures ---
 const rooms = new Map(); // roomId -> Room
@@ -312,7 +312,7 @@ app.use(helmet({
 // CORS configuration
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
     : process.env.NODE_ENV === 'production' ? false : '*',
   methods: ['GET', 'POST'],
   credentials: false,
@@ -630,6 +630,7 @@ wss.on('connection', (ws, req) => {
   // Check connection limit per IP
   const ipConnections = connectionsByIP.get(ip) || 0;
   if (ipConnections >= MAX_CONNECTIONS_PER_IP) {
+    console.warn(`[security] Connection limit exceeded for IP ${ip} (${ipConnections}/${MAX_CONNECTIONS_PER_IP})`);
     ws.close(1013, 'Too many connections from this IP, try again later');
     return;
   }
@@ -642,6 +643,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (buf) => {
     // Check message size
     if (buf.length > MAX_MESSAGE_SIZE) {
+      console.warn(`[security] Message size limit exceeded from client ${clientId} (${buf.length}/${MAX_MESSAGE_SIZE} bytes)`);
       ws.close(1009, 'Message too large');
       return;
     }
