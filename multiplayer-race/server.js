@@ -20,6 +20,10 @@ require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const RateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const cors = require('cors');
+const validator = require('validator');
+const xss = require('xss');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const { execSync } = require('child_process');
@@ -91,12 +95,34 @@ const FINISH_DECELERATION_DURATION_MS = Number(process.env.FINISH_DECELERATION_D
 // Base motion constants (should match client)
 const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 
+// --- Security Constants ---
+const MAX_CONNECTIONS_PER_IP = 5;
+const MAX_MESSAGE_SIZE = 10240; // 10KB
+
 // --- Data Structures ---
 const rooms = new Map(); // roomId -> Room
 let nextClientId = 1;
+const connectionsByIP = new Map(); // Track WebSocket connections per IP
 
 function nowMs() { return Date.now(); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+// --- Input Sanitization Functions ---
+function sanitizeUsername(input) {
+  if (!input || typeof input !== 'string') return '';
+  const cleaned = xss(input.trim());
+  // Allow only alphanumeric, spaces, underscores, hyphens
+  if (!/^[a-zA-Z0-9_ -]+$/.test(cleaned)) return '';
+  return cleaned.substring(0, 40);
+}
+
+function sanitizeRoomId(input) {
+  if (!input || typeof input !== 'string') return '';
+  const cleaned = xss(input.trim());
+  // Allow only alphanumeric, underscores, hyphens
+  if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) return '';
+  return cleaned.substring(0, 50);
+}
 
 function createRoom(roomId) {
   const room = {
@@ -266,6 +292,45 @@ function stopTick(room) {
 
 // --- Server Setup ---
 const app = express();
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
+// CORS configuration
+const corsOptions = {
+  origin: process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',') 
+    : '*',
+  methods: ['GET', 'POST'],
+  credentials: false,
+  maxAge: 86400 // 24 hours
+};
+app.use(cors(corsOptions));
+
+// Rate limiting for API endpoints
+const apiLimiter = RateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // limit each IP to 30 requests per minute
+  message: { error: 'Too many requests, please try again later' }
+});
+
+// Apply rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 // Serve static files from parent directory (repo root)
 const staticPath = path.join(__dirname, '..');
@@ -562,15 +627,32 @@ const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
   const clientId = nextClientId++;
+  const ip = req.socket.remoteAddress;
+  
+  // Check connection limit per IP
+  const ipConnections = connectionsByIP.get(ip) || 0;
+  if (ipConnections >= MAX_CONNECTIONS_PER_IP) {
+    ws.close(1013, 'Too many connections from this IP, try again later');
+    return;
+  }
+  
+  connectionsByIP.set(ip, ipConnections + 1);
+  
   let room = null;
   let player = null;
 
   ws.on('message', (buf) => {
+    // Check message size
+    if (buf.length > MAX_MESSAGE_SIZE) {
+      ws.close(1009, 'Message too large');
+      return;
+    }
+    
     let msg; try { msg = JSON.parse(buf.toString()); } catch { return; }
     if (msg.type === 'hello') {
-      const roomId = msg.roomId || 'default';
+      const roomId = sanitizeRoomId(msg.roomId) || 'default';
       room = rooms.get(roomId) || createRoom(roomId);
-      const username = (msg.username && String(msg.username).trim()) || `Player_${clientId}`;
+      const username = sanitizeUsername(msg.username) || `Player_${clientId}`;
       player = { id: clientId, username, ready: false, lane: null, ws, joinMs: nowMs(), lastResult: null };
       room.players.set(clientId, player);
       if (!room.hostId) room.hostId = clientId;
@@ -665,8 +747,8 @@ wss.on('connection', (ws, req) => {
       }
       case 'rename': {
         if (room.phase === 'race') break; // prevent mid-race rename for simplicity
-        const newName = (msg.username && String(msg.username).trim()) || '';
-        if (newName && newName.length <= 40) {
+        const newName = sanitizeUsername(msg.username);
+        if (newName) {
           const oldName = player.username;
           player.username = newName;
           console.log(`[room:${room.id}] rename clientId=${player.id} '${oldName}' -> '${newName}'`);
@@ -678,6 +760,14 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
+    // Clean up connection counter
+    const count = connectionsByIP.get(ip) || 0;
+    if (count <= 1) {
+      connectionsByIP.delete(ip);
+    } else {
+      connectionsByIP.set(ip, count - 1);
+    }
+    
     if (room && player) {
       console.log(`[room:${room.id}] disconnect clientId=${player.id} username=${player.username}`);
       room.players.delete(player.id);
