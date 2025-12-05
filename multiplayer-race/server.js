@@ -96,11 +96,11 @@ const MAX_EXECUTION_TIME = 10; // seconds nominal lap duration per single-player
 // --- Security Constants ---
 const MAX_CONNECTIONS_PER_IP = (() => {
   const val = parseInt(process.env.MAX_CONNECTIONS_PER_IP, 10);
-  return (val > 0 && val < 1000) ? val : 5;
+  return (val >= 1 && val <= 999) ? val : 5;
 })();
 const MAX_MESSAGE_SIZE = (() => {
   const val = parseInt(process.env.MAX_MESSAGE_SIZE, 10);
-  return (val > 0 && val < 100000) ? val : 10240; // 10KB default, max 100KB
+  return (val >= 1 && val <= 100000) ? val : 10240; // 10KB default, max 100KB
 })();
 
 // --- Data Structures ---
@@ -116,7 +116,7 @@ function sanitizeUsername(input) {
   if (!input || typeof input !== 'string') return '';
   const trimmed = input.trim();
   // Allow only alphanumeric, underscores, hyphens (no spaces to prevent confusion attacks)
-  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
+  if (!trimmed || !/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
   return trimmed.substring(0, 40);
 }
 
@@ -124,7 +124,7 @@ function sanitizeRoomId(input) {
   if (!input || typeof input !== 'string') return '';
   const trimmed = input.trim();
   // Allow only alphanumeric, underscores, hyphens
-  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
+  if (!trimmed || !/^[a-zA-Z0-9_-]+$/.test(trimmed)) return '';
   return trimmed.substring(0, 50);
 }
 
